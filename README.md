@@ -68,6 +68,7 @@ Cuerpo del POST:
 ```
 
 ## Pruebas
+No necesitan `.env` ni base de datos, usan SQLite en memoria.
 ```bash
-pytest
+python -m pytest
 ```
