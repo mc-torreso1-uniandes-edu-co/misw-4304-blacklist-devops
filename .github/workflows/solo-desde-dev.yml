@@ -1,0 +1,25 @@
+name: solo-desde-dev
+
+on:
+  pull_request:
+    branches: [main]
+    # "edited" cubre el caso de un PR abierto hacia dev al que luego le cambian la rama destino a main
+    types: [opened, synchronize, reopened, edited]
+
+permissions: {}
+
+jobs:
+  solo-desde-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar que el PR viene de dev
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          if [ "$HEAD_REF" != "dev" ] || [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            echo "::error::Los PR hacia main solo pueden venir de la rama dev de este repositorio (origen: $HEAD_REPO:$HEAD_REF)."
+            exit 1
+          fi
+          echo "Origen válido: dev"
