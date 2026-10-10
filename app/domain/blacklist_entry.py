@@ -9,5 +9,5 @@ class BlacklistEntry:
     email: str
     app_uuid: UUID
     blocked_reason: Optional[str]
-    request_ip: str
+    ip_address: str
     created_at: datetime

@@ -9,4 +9,4 @@ class CheckEmailInBlacklist:
         self._repository = repository
 
     def execute(self, email: str) -> Optional[BlacklistEntry]:
-        raise NotImplementedError
+        return self._repository.find_by_email(email)

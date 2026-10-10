@@ -1,6 +1,6 @@
 ENV_DATABASE_URL = "DATABASE_URL"
-ENV_JWT_SECRET_KEY = "JWT_SECRET_KEY"
 ENV_STATIC_BEARER_TOKEN = "STATIC_BEARER_TOKEN"
+CONFIG_STATIC_BEARER_TOKEN = "STATIC_BEARER_TOKEN"
 
 BLACKLISTS_PATH = "/blacklists"
 EMAIL_URL_VARIABLE = "email"
@@ -16,6 +16,18 @@ BLOCKED_REASON_MAX_LENGTH = 255
 UUID_STRING_LENGTH = 36
 IP_ADDRESS_MAX_LENGTH = 45
 
+AUTHORIZATION_HEADER = "Authorization"
+BEARER_PREFIX = "Bearer "
+PROXY_FORWARDED_FOR_HOPS = 1
+
+KEY_MESSAGE = "message"
+KEY_ERRORS = "errors"
+KEY_IS_BLACKLISTED = "is_blacklisted"
+
+MESSAGE_EMAIL_ADDED = "El email fue agregado a la lista negra global."
+MESSAGE_EMAIL_ALREADY_BLACKLISTED = "El email ya se encuentra en la lista negra global."
+MESSAGE_INVALID_REQUEST = "La solicitud no es valida."
+MESSAGE_UNAUTHORIZED = "Token de autorizacion ausente o invalido."
+
 TEST_DATABASE_URI = "sqlite:///:memory:"
-TEST_JWT_SECRET_KEY = "test-jwt-secret-key-with-sufficient-length-0123456789"
 TEST_STATIC_BEARER_TOKEN = "test-static-bearer-token"
