@@ -1,18 +1,18 @@
-name: solo-desde-dev
+name: reglas-de-ramas
 
 on:
   pull_request:
-    branches: [main]
-    # "edited" cubre el caso de un PR abierto hacia dev al que luego le cambian la rama destino a main
+    branches: [main, dev]
     types: [opened, synchronize, reopened, edited]
 
 permissions: {}
 
 jobs:
   solo-desde-dev:
+    if: github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - name: Verificar que el PR viene de dev
+      - name: Verificar que el PR hacia main viene de dev
         env:
           HEAD_REF: ${{ github.head_ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -22,4 +22,16 @@ jobs:
             echo "::error::Los PR hacia main solo pueden venir de la rama dev de este repositorio (origen: $HEAD_REPO:$HEAD_REF)."
             exit 1
           fi
-          echo "Origen válido: dev"
+
+  no-desde-main:
+    if: github.base_ref == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar que el PR hacia dev no viene de main
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD_REF" = "main" ]; then
+            echo "::error::No se hacen PR de main hacia dev: el contenido ya es el mismo. Cierra este PR."
+            exit 1
+          fi
