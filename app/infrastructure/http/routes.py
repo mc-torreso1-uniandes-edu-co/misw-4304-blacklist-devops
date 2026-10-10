@@ -5,6 +5,7 @@ from app import constants
 from app.application.use_cases.add_email_to_blacklist import AddEmailToBlacklist
 from app.application.use_cases.check_email_in_blacklist import CheckEmailInBlacklist
 from app.infrastructure.http.blacklist_resources import BlacklistEmailResource, BlacklistResource
+from app.infrastructure.http.ping_resource import PingResource
 
 ADD_USE_CASE_KWARG = "add_email_to_blacklist"
 CHECK_USE_CASE_KWARG = "check_email_in_blacklist"
@@ -16,6 +17,7 @@ def register_routes(
     check_email_in_blacklist: CheckEmailInBlacklist,
 ) -> None:
     api = Api(app)
+    api.add_resource(PingResource, constants.PING_PATH)
     api.add_resource(
         BlacklistResource,
         constants.BLACKLISTS_PATH,

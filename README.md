@@ -28,6 +28,7 @@ Copia `.env.example` a `.env` (obligatorio, sin él la aplicación no arranca) y
 |---|---|
 | `DATABASE_URL` | Cadena de conexión, por ejemplo `postgresql://usuario:clave@host:5432/base` o `sqlite:///local.db` |
 | `STATIC_BEARER_TOKEN` | Token que deben enviar los clientes en el encabezado `Authorization: Bearer <token>` |
+| `APP_VERSION` | Opcional. Versión que devuelve `/ping` (por defecto `local`) |
 
 Las tablas se crean automáticamente al iniciar la aplicación.
 
@@ -49,10 +50,11 @@ FLASK_APP=application python -m flask run
 El API queda en `http://127.0.0.1:5000`.
 
 ## Endpoints
-Todos requieren el encabezado `Authorization: Bearer <token>`.
+Los de `/blacklists` requieren el encabezado `Authorization: Bearer <token>`. `/ping` es público.
 
 | Método | Ruta | Respuestas |
 |---|---|---|
+| GET | `/ping` | 200 con `version` (health check) |
 | POST | `/blacklists` | 201 creado, 400 solicitud inválida, 401 sin autorización, 409 email ya registrado |
 | GET | `/blacklists/<email>` | 200 con `is_blacklisted` y `blocked_reason`, 401 sin autorización |
 
