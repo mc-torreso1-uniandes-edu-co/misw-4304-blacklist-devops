@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.application.ports.blacklist_repository import BlacklistRepository
 from app.domain.blacklist_entry import BlacklistEntry
+from app.domain.email import normalize_email
 from app.domain.errors import EmailAlreadyBlacklistedError
 
 
@@ -19,14 +20,14 @@ class AddEmailToBlacklist:
         ip_address: str,
         requested_at: datetime,
     ) -> BlacklistEntry:
-        if self._repository.find_by_email(email) is not None:
-            raise EmailAlreadyBlacklistedError(email)
+        normalized_email = normalize_email(email)
+        if self._repository.find_by_email(normalized_email) is not None:
+            raise EmailAlreadyBlacklistedError(normalized_email)
         entry = BlacklistEntry(
-            email=email,
+            email=normalized_email,
             app_uuid=app_uuid,
             blocked_reason=blocked_reason,
             ip_address=ip_address,
             created_at=requested_at,
         )
-        self._repository.add(entry)
-        return entry
+        return self._repository.add(entry)

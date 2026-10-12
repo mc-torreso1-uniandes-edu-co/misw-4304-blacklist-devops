@@ -6,7 +6,7 @@ from app.domain.blacklist_entry import BlacklistEntry
 
 class BlacklistRepository(ABC):
     @abstractmethod
-    def add(self, entry: BlacklistEntry) -> None:
+    def add(self, entry: BlacklistEntry) -> BlacklistEntry:
         ...
 
     @abstractmethod

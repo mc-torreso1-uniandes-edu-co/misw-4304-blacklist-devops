@@ -11,3 +11,4 @@ class BlacklistEntry:
     blocked_reason: Optional[str]
     ip_address: str
     created_at: datetime
+    id: Optional[int] = None
