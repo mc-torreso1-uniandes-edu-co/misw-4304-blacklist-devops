@@ -1,0 +1,69 @@
+# Mantiene la etiqueta "bloqueada" según las dependencias (blocked by) de los issues.
+# Al cerrar un issue, la quita de los sucesores que ya no tienen precedentes abiertos.
+# Al reabrirlo, la vuelve a poner en sus sucesores abiertos.
+# Ejecución manual: recalcula la etiqueta en todos los issues abiertos.
+name: etiqueta-bloqueada
+
+on:
+  issues:
+    types: [closed, reopened]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: etiqueta-bloqueada
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Actualizar etiqueta bloqueada
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ETIQUETA = 'bloqueada';
+            const { owner, repo } = context.repo;
+
+            const precedentesAbiertos = async (numero) => {
+              const precedentes = await github.paginate(
+                'GET /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocked_by',
+                { owner, repo, issue_number: numero, per_page: 100 });
+              return precedentes.filter(p => p.state === 'open').length;
+            };
+
+            const tieneEtiqueta = (issue) => issue.labels.some(l => (l.name ?? l) === ETIQUETA);
+
+            const ajustar = async (issue) => {
+              if (issue.state !== 'open' || issue.pull_request) return;
+              const bloqueada = (await precedentesAbiertos(issue.number)) > 0;
+              if (bloqueada && !tieneEtiqueta(issue)) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: issue.number, labels: [ETIQUETA] });
+                core.info(`#${issue.number}: se agrega "${ETIQUETA}"`);
+              } else if (!bloqueada && tieneEtiqueta(issue)) {
+                await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name: ETIQUETA });
+                core.info(`#${issue.number}: se quita "${ETIQUETA}"`);
+              }
+            };
+
+            if (context.eventName === 'workflow_dispatch') {
+              const abiertos = await github.paginate(github.rest.issues.listForRepo,
+                { owner, repo, state: 'open', per_page: 100 });
+              for (const issue of abiertos) await ajustar(issue);
+              return;
+            }
+
+            const numero = context.payload.issue.number;
+            const sucesores = await github.paginate(
+              'GET /repos/{owner}/{repo}/issues/{issue_number}/dependencies/blocking',
+              { owner, repo, issue_number: numero, per_page: 100 });
+            if (sucesores.length === 0) {
+              core.info(`#${numero} no bloquea a ningún issue`);
+              return;
+            }
+            for (const s of sucesores) {
+              const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: s.number });
+              await ajustar(issue);
+            }
