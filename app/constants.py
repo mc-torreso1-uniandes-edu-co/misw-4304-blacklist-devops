@@ -1,0 +1,39 @@
+ENV_DATABASE_URL = "DATABASE_URL"
+ENV_STATIC_BEARER_TOKEN = "STATIC_BEARER_TOKEN"
+ENV_APP_VERSION = "APP_VERSION"
+CONFIG_STATIC_BEARER_TOKEN = "STATIC_BEARER_TOKEN"
+CONFIG_APP_VERSION = "APP_VERSION"
+DEFAULT_APP_VERSION = "local"
+
+PING_PATH = "/ping"
+KEY_VERSION = "version"
+
+BLACKLISTS_PATH = "/blacklists"
+EMAIL_URL_VARIABLE = "email"
+BLACKLIST_EMAIL_PATH = f"{BLACKLISTS_PATH}/<string:{EMAIL_URL_VARIABLE}>"
+
+FIELD_EMAIL = "email"
+FIELD_APP_UUID = "app_uuid"
+FIELD_BLOCKED_REASON = "blocked_reason"
+
+BLACKLIST_TABLE_NAME = "blacklist_entries"
+EMAIL_MAX_LENGTH = 254
+BLOCKED_REASON_MAX_LENGTH = 255
+UUID_STRING_LENGTH = 36
+IP_ADDRESS_MAX_LENGTH = 45
+
+AUTHORIZATION_HEADER = "Authorization"
+BEARER_PREFIX = "Bearer "
+PROXY_FORWARDED_FOR_HOPS = 1
+
+KEY_MESSAGE = "message"
+KEY_ERRORS = "errors"
+KEY_IS_BLACKLISTED = "is_blacklisted"
+
+MESSAGE_EMAIL_ADDED = "El email fue agregado a la lista negra global."
+MESSAGE_EMAIL_ALREADY_BLACKLISTED = "El email ya se encuentra en la lista negra global."
+MESSAGE_INVALID_REQUEST = "La solicitud no es valida."
+MESSAGE_UNAUTHORIZED = "Token de autorizacion ausente o invalido."
+
+TEST_DATABASE_URI = "sqlite:///:memory:"
+TEST_STATIC_BEARER_TOKEN = "test-static-bearer-token"
