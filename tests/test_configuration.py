@@ -37,3 +37,6 @@ def test_create_app_without_explicit_config_uses_environment(monkeypatch):
     application = create_app()
 
     assert application.config["TESTING"] is True
+    with application.app_context():
+        db.session.remove()
+        db.engine.dispose()
