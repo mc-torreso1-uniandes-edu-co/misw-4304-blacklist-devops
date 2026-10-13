@@ -1,0 +1,923 @@
+{
+  "info": {
+    "name": "Blacklist API – Lista negra global",
+    "description": "Microservicio REST de lista negra global de emails.\n\n**URL base:** variable `base_url` del environment.\n\n**Autenticación:** Bearer Token estático en la variable `token`. `/ping` no requiere token.\n\n**Endpoints**\n\n| Método | Ruta | Descripción |\n|---|---|---|\n| POST | `/blacklists` | Agrega un email a la lista negra. |\n| GET | `/blacklists/{email}` | Consulta si un email está en la lista negra. |\n| GET | `/ping` | Verifica que la aplicación está en ejecución y devuelve su versión. |\n\nEjecutar los escenarios en orden: el 3 y el 8 usan el email creado en el 1.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Agregar email (POST /blacklists)",
+      "item": [
+        {
+          "name": "1. Agregar email válido",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set(\"email_prueba\", \"prueba+\" + Date.now() + \"@ejemplo.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Incluye mensaje e id', () => { pm.expect(body.msg).to.be.a('string'); pm.expect(body.id).to.be.a('number'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email_prueba}}\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"Correo reportado como spam\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "1. Agregar email válido",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{email_prueba}}\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"Correo reportado como spam\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Email agregado a la lista negra\",\n  \"id\": 1\n}"
+            }
+          ]
+        },
+        {
+          "name": "2. Agregar sin blocked_reason",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set(\"email_sin_motivo\", \"sin-motivo+\" + Date.now() + \"@ejemplo.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Incluye id', () => pm.expect(pm.response.json().id).to.be.a('number'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email_sin_motivo}}\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "2. Agregar sin blocked_reason",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{email_sin_motivo}}\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Email agregado a la lista negra\",\n  \"id\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "3. Email duplicado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 409', () => pm.response.to.have.status(409));",
+                  "pm.test('Incluye mensaje', () => pm.expect(pm.response.json().msg).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email_prueba}}\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"Correo reportado como spam\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "3. Email duplicado",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"{{email_prueba}}\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"Correo reportado como spam\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"El email ya está en la lista negra\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "4. Email con formato inválido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detalla el campo email', () => pm.expect(pm.response.json().errors).to.have.property('email'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "4. Email con formato inválido",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"no-es-un-email\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Datos inválidos\",\n  \"errors\": {\n    \"email\": [\n      \"Not a valid email address.\"\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "5. app_uuid que no es UUID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detalla el campo app_uuid', () => pm.expect(pm.response.json().errors).to.have.property('app_uuid'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "5. app_uuid que no es UUID",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"123\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Datos inválidos\",\n  \"errors\": {\n    \"app_uuid\": [\n      \"Not a valid UUID.\"\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "6. blocked_reason de más de 255 caracteres",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 400', () => pm.response.to.have.status(400));",
+                  "pm.test('Detalla el campo blocked_reason', () => pm.expect(pm.response.json().errors).to.have.property('blocked_reason'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "6. blocked_reason de más de 255 caracteres",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"{{$guid}}\",\n  \"blocked_reason\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Datos inválidos\",\n  \"errors\": {\n    \"blocked_reason\": [\n      \"Longer than maximum length 255.\"\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "7. Agregar sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Incluye mensaje', () => pm.expect(pm.response.json().msg).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/blacklists",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists"
+              ]
+            },
+            "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "7. Agregar sin token",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/blacklists",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists"
+                  ]
+                },
+                "description": "Agrega un email a la lista negra global.\n\n**Cuerpo (JSON)**\n\n| Campo | Tipo | Obligatorio | Reglas |\n|---|---|---|---|\n| `email` | string | Sí | Formato de email válido. Se guarda en minúsculas y sin espacios. |\n| `app_uuid` | string | Sí | UUID válido de la aplicación cliente. |\n| `blocked_reason` | string | No | Máximo 255 caracteres. |\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 201 | Email agregado. Incluye el `id` del registro. |\n| 400 | Datos inválidos o campos faltantes. Incluye el detalle en `errors`. |\n| 401 | Token ausente o inválido. |\n| 409 | El email ya está en la lista negra. |\n",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"prueba@ejemplo.com\",\n  \"app_uuid\": \"{{$guid}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Token de autorización ausente\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Consultar email (GET /blacklists/{email})",
+      "item": [
+        {
+          "name": "8. Email en la lista",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Está en la lista con su motivo', () => { pm.expect(body.is_blacklisted).to.eql(true); pm.expect(body.blocked_reason).to.eql('Correo reportado como spam'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/blacklists/{{email_prueba}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists",
+                "{{email_prueba}}"
+              ]
+            },
+            "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n"
+          },
+          "response": [
+            {
+              "name": "8. Email en la lista",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/blacklists/{{email_prueba}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists",
+                    "{{email_prueba}}"
+                  ]
+                },
+                "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"is_blacklisted\": true,\n  \"blocked_reason\": \"Correo reportado como spam\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "9. Email que no está en la lista",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set(\"email_inexistente\", \"inexistente+\" + Date.now() + \"@ejemplo.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('No está en la lista', () => { pm.expect(body.is_blacklisted).to.eql(false); pm.expect(body.blocked_reason).to.eql(null); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/blacklists/{{email_inexistente}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists",
+                "{{email_inexistente}}"
+              ]
+            },
+            "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n"
+          },
+          "response": [
+            {
+              "name": "9. Email que no está en la lista",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/blacklists/{{email_inexistente}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists",
+                    "{{email_inexistente}}"
+                  ]
+                },
+                "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"is_blacklisted\": false,\n  \"blocked_reason\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "10. Consultar sin token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Incluye mensaje', () => pm.expect(pm.response.json().msg).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/blacklists/{{email_prueba}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "blacklists",
+                "{{email_prueba}}"
+              ]
+            },
+            "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "10. Consultar sin token",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/blacklists/{{email_prueba}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "blacklists",
+                    "{{email_prueba}}"
+                  ]
+                },
+                "description": "Consulta si un email está en la lista negra global.\n\nEl email va en la ruta y se compara en minúsculas y sin espacios.\n\n**Respuestas**\n\n| Código | Cuándo |\n|---|---|\n| 200 | Siempre que el token sea válido. `is_blacklisted` indica si está en la lista y `blocked_reason` el motivo (o `null`). |\n| 401 | Token ausente o inválido. |\n",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"msg\": \"Token de autorización ausente\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Salud",
+      "item": [
+        {
+          "name": "11. Verificar salud (ping)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Código 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('Solo devuelve la versión', () => { pm.expect(Object.keys(body)).to.eql(['version']); pm.expect(body.version).to.be.a('string'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/ping",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "ping"
+              ]
+            },
+            "description": "Verifica que la aplicación está en ejecución. No requiere token ni consulta la base de datos.\n\nResponde 200 con la versión desplegada en `version`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [
+            {
+              "name": "11. Verificar salud (ping)",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/ping",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "ping"
+                  ]
+                },
+                "description": "Verifica que la aplicación está en ejecución. No requiere token ni consulta la base de datos.\n\nResponde 200 con la versión desplegada en `version`.",
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"version\": \"v1\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
