@@ -2,7 +2,7 @@
 Microservicio de lista negra global de emails – Proyecto 1, Entrega 1 (MISW 4304)
 
 ## Requisitos
-- Python 3.13 (`.python-version` indica la versión del equipo)
+- Python 3.13.16 (la versión de `.python-version`). Se instala desde python.org o con `uv python install 3.13.16`
 - PostgreSQL (o SQLite para pruebas locales)
 
 ## Crear el entorno
