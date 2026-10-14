@@ -13,7 +13,9 @@ VERSION_FILE_NAME = "VERSION"
 DEFAULT_APP_VERSION = "local"
 
 TOKEN_IDENTITY = "lista-negra"
-PROXY_FORWARDED_FOR_HOPS = 1
+ENV_PROXY_FIX_X_FOR = "PROXY_FIX_X_FOR"
+CONFIG_PROXY_FIX_X_FOR = "PROXY_FIX_X_FOR"
+DEFAULT_PROXY_FORWARDED_FOR_HOPS = 1
 
 PING_PATH = "/ping"
 BLACKLISTS_PATH = "/blacklists"
@@ -44,6 +46,7 @@ MESSAGE_INVALID_TOKEN = "Token de autorización inválido"
 
 LOG_CREATE_TABLES_FAILED = "No se pudieron crear las tablas al iniciar la aplicación"
 ERROR_INVALID_APP_ENV = "Valor de APP_ENV no válido: '{value}'. Valores válidos: {valid}"
+ERROR_INVALID_PROXY_FIX_X_FOR = "Valor de PROXY_FIX_X_FOR no válido: '{value}'. Debe ser un entero mayor o igual a 1"
 
 TEST_DATABASE_URI = "sqlite://"
 TEST_JWT_SECRET_KEY = "clave-secreta-solo-para-pruebas-con-longitud-suficiente"
