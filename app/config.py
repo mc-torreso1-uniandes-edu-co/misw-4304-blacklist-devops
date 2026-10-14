@@ -27,5 +27,11 @@ CONFIG_BY_ENVIRONMENT = {
 
 
 def resolve_config_class():
-    environment = os.environ.get(constants.ENV_APP_ENV, constants.DEFAULT_APP_ENV)
-    return CONFIG_BY_ENVIRONMENT[environment]
+    environment = os.environ.get(constants.ENV_APP_ENV, "").strip().lower() or constants.DEFAULT_APP_ENV
+    try:
+        return CONFIG_BY_ENVIRONMENT[environment]
+    except KeyError:
+        valid_environments = ", ".join(sorted(CONFIG_BY_ENVIRONMENT))
+        raise ValueError(
+            constants.ERROR_INVALID_APP_ENV.format(value=environment, valid=valid_environments)
+        ) from None
