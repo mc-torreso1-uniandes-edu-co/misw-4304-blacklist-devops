@@ -43,6 +43,7 @@ MESSAGE_MISSING_TOKEN = "Token de autorización ausente"
 MESSAGE_INVALID_TOKEN = "Token de autorización inválido"
 
 LOG_CREATE_TABLES_FAILED = "No se pudieron crear las tablas al iniciar la aplicación"
+ERROR_INVALID_APP_ENV = "Valor de APP_ENV no válido: '{value}'. Valores válidos: {valid}"
 
 TEST_DATABASE_URI = "sqlite://"
 TEST_JWT_SECRET_KEY = "clave-secreta-solo-para-pruebas-con-longitud-suficiente"

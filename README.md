@@ -28,7 +28,7 @@ Copia `.env.example` a `.env` (obligatorio, sin él la aplicación no arranca) y
 |---|---|
 | `DATABASE_URL` | Cadena de conexión, por ejemplo `postgresql://usuario:clave@host:5432/base` o `sqlite:///local.db`. Siempre `postgresql://`, sin sufijo de driver |
 | `JWT_SECRET_KEY` | Clave con la que se firma y valida el token |
-| `APP_ENV` | Opcional. `development` (por defecto), `production` o `testing` |
+| `APP_ENV` | Opcional. `development` (por defecto, también si queda vacío), `production` o `testing`. Otro valor detiene el arranque con un mensaje que lista los válidos |
 
 Las tablas se crean automáticamente al iniciar la aplicación.
 

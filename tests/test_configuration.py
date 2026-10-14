@@ -1,5 +1,6 @@
 import logging
 
+import pytest
 from sqlalchemy.exc import OperationalError
 
 from app import constants, create_app, create_tables
@@ -17,6 +18,29 @@ def test_resolve_config_class_defaults_to_development(monkeypatch):
     monkeypatch.delenv(constants.ENV_APP_ENV, raising=False)
 
     assert resolve_config_class() is Config
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_resolve_config_class_treats_empty_value_as_default(monkeypatch, value):
+    monkeypatch.setenv(constants.ENV_APP_ENV, value)
+
+    assert resolve_config_class() is Config
+
+
+def test_resolve_config_class_ignores_case_and_spaces(monkeypatch):
+    monkeypatch.setenv(constants.ENV_APP_ENV, "  Testing ")
+
+    assert resolve_config_class() is TestConfig
+
+
+def test_resolve_config_class_rejects_unknown_value(monkeypatch):
+    monkeypatch.setenv(constants.ENV_APP_ENV, "staging")
+
+    with pytest.raises(ValueError, match="staging") as error:
+        resolve_config_class()
+
+    for environment in (constants.APP_ENV_DEVELOPMENT, constants.APP_ENV_PRODUCTION, constants.APP_ENV_TESTING):
+        assert environment in str(error.value)
 
 
 def test_create_tables_logs_error_instead_of_failing(app, monkeypatch, caplog):
