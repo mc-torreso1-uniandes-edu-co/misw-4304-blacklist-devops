@@ -86,7 +86,7 @@ python -m pytest --cov=app
 Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
 
 ## Postman
-La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` y `base_url` en el environment y ejecuta los escenarios en orden.
+La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` en el environment y ejecuta los escenarios en orden. `base_url` ya apunta a `http://localhost:5000` (local) y a `http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com` (AWS). El token se carga solo como valor actual, nunca como valor inicial: el workspace es público.
 
 ## Problemas conocidos en Windows
 Si el control de aplicaciones bloquea una extensión compilada (error `DLL load failed`), por ejemplo la de SQLAlchemy, instálala sin compilar:
