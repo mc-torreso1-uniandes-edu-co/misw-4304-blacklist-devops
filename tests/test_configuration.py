@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from app import constants, create_app, create_tables
-from app.config import Config, TestConfig, resolve_config_class
+from app.config import Config, TestConfig, read_forwarded_for_hops, resolve_config_class
 from app.extensions import db
 
 
@@ -41,6 +41,30 @@ def test_resolve_config_class_rejects_unknown_value(monkeypatch):
 
     for environment in (constants.APP_ENV_DEVELOPMENT, constants.APP_ENV_PRODUCTION, constants.APP_ENV_TESTING):
         assert environment in str(error.value)
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_read_forwarded_for_hops_defaults_to_one(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv(constants.ENV_PROXY_FIX_X_FOR, raising=False)
+    else:
+        monkeypatch.setenv(constants.ENV_PROXY_FIX_X_FOR, value)
+
+    assert read_forwarded_for_hops() == constants.DEFAULT_PROXY_FORWARDED_FOR_HOPS
+
+
+def test_read_forwarded_for_hops_uses_environment_value(monkeypatch):
+    monkeypatch.setenv(constants.ENV_PROXY_FIX_X_FOR, " 2 ")
+
+    assert read_forwarded_for_hops() == 2
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "dos", "1.5"])
+def test_read_forwarded_for_hops_rejects_invalid_value(monkeypatch, value):
+    monkeypatch.setenv(constants.ENV_PROXY_FIX_X_FOR, value)
+
+    with pytest.raises(ValueError, match=constants.ENV_PROXY_FIX_X_FOR):
+        read_forwarded_for_hops()
 
 
 def test_create_tables_logs_error_instead_of_failing(app, monkeypatch, caplog):

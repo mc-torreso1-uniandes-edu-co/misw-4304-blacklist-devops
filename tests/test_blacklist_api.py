@@ -1,18 +1,23 @@
 from http import HTTPStatus
 from uuid import uuid4
 
+from flask_jwt_extended import create_access_token
 from sqlalchemy import select
 
-from app import constants
+from app import constants, create_app
+from app.config import TestConfig
 from app.extensions import db
 from app.infrastructure.persistence.blacklist_entry_model import BlacklistEntryModel
 from app.infrastructure.persistence.sqlalchemy_blacklist_repository import SqlAlchemyBlacklistRepository
+from tests.conftest import bearer_headers
 
 SAMPLE_REASON = "Fraude comprobado"
 INVALID_EMAIL = "no-es-un-email"
 INVALID_UUID = "no-es-un-uuid"
 CLIENT_IP = "203.0.113.7"
+PROXY_IP = "172.31.10.20"
 FORWARDED_FOR_HEADER = "X-Forwarded-For"
+FORWARDED_FOR_CHAIN = f"{CLIENT_IP}, {PROXY_IP}"
 
 
 def blacklist_path(email):
@@ -113,6 +118,33 @@ def test_post_stores_ip_from_forwarded_for_header(app, client, auth_headers, uni
     with app.app_context():
         stored = db.session.execute(select(BlacklistEntryModel).filter_by(email=unique_email)).scalar_one()
     assert stored.ip_address == CLIENT_IP
+
+
+def stored_ip_for_forwarded_chain(application, forwarded_for):
+    email = f"{uuid4().hex}@example.com"
+    with application.app_context():
+        token = create_access_token(identity=constants.TOKEN_IDENTITY, expires_delta=False)
+    headers = {**bearer_headers(token), FORWARDED_FOR_HEADER: forwarded_for}
+
+    application.test_client().post(constants.BLACKLISTS_PATH, json=valid_payload(email), headers=headers)
+
+    with application.app_context():
+        stored = db.session.execute(select(BlacklistEntryModel).filter_by(email=email)).scalar_one()
+        ip_address = stored.ip_address
+        db.session.remove()
+        db.engine.dispose()
+    return ip_address
+
+
+def test_post_with_one_trusted_hop_stores_last_proxy_of_chain(app):
+    assert stored_ip_for_forwarded_chain(app, FORWARDED_FOR_CHAIN) == PROXY_IP
+
+
+def test_post_with_two_trusted_hops_stores_client_ip_of_chain():
+    class TwoHopsConfig(TestConfig):
+        PROXY_FIX_X_FOR = 2
+
+    assert stored_ip_for_forwarded_chain(create_app(TwoHopsConfig), FORWARDED_FOR_CHAIN) == CLIENT_IP
 
 
 def test_post_rejects_invalid_email(client, auth_headers):
