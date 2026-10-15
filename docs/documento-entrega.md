@@ -4,7 +4,7 @@
 |---|---|
 | Curso | MISW 4304 · DevOps · Universidad de los Andes (periodo 202615) |
 | Entrega | Entrega 1: despliegue manual de un microservicio sobre un servicio PaaS |
-| Grupo | 20 |
+| Grupo | Blacklist DevOps |
 | Integrantes | Marcelo César Torres · Héctor José Melgarejo · Juan Sebastián Páez · Jean Pierre Betancourt |
 | Fecha | 18 de octubre de 2026 |
 
