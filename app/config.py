@@ -35,3 +35,16 @@ def resolve_config_class():
         raise ValueError(
             constants.ERROR_INVALID_APP_ENV.format(value=environment, valid=valid_environments)
         ) from None
+
+
+def read_forwarded_for_hops():
+    value = os.environ.get(constants.ENV_PROXY_FIX_X_FOR, "").strip()
+    if not value:
+        return constants.DEFAULT_PROXY_FORWARDED_FOR_HOPS
+    try:
+        hops = int(value)
+    except ValueError:
+        hops = 0
+    if hops < 1:
+        raise ValueError(constants.ERROR_INVALID_PROXY_FIX_X_FOR.format(value=value))
+    return hops
