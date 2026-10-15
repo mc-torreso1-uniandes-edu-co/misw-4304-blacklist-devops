@@ -1,8 +1,8 @@
-# misw-4304-blacklist-devops
-Microservicio de lista negra global de emails – Proyecto 1, Entrega 1 (MISW 4304)
+# Microservicio de Lista Negra Global de Emails
+Proyecto de DevOps - MISW - 202615. Grupo 20: Blacklist DevOps
 
 ## Requisitos
-- Python 3.13 (`.python-version` indica la versión del equipo)
+- Python 3.13.16 (la versión de `.python-version`). Se instala desde python.org o con `uv python install 3.13.16`
 - PostgreSQL (o SQLite para pruebas locales)
 
 ## Crear el entorno
@@ -28,7 +28,8 @@ Copia `.env.example` a `.env` (obligatorio, sin él la aplicación no arranca) y
 |---|---|
 | `DATABASE_URL` | Cadena de conexión, por ejemplo `postgresql://usuario:clave@host:5432/base` o `sqlite:///local.db`. Siempre `postgresql://`, sin sufijo de driver |
 | `JWT_SECRET_KEY` | Clave con la que se firma y valida el token |
-| `APP_ENV` | Opcional. `development` (por defecto), `production` o `testing` |
+| `APP_ENV` | Opcional. `development` (por defecto, también si queda vacío), `production` o `testing`. Otro valor detiene el arranque con un mensaje que lista los válidos |
+| `PROXY_FIX_X_FOR` | Opcional. Cantidad de proxies que agregan una entrada a `X-Forwarded-For` antes de la aplicación, para guardar la IP del cliente. `1` por defecto |
 
 Las tablas se crean automáticamente al iniciar la aplicación.
 
@@ -86,7 +87,7 @@ python -m pytest --cov=app
 Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
 
 ## Postman
-La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` y `base_url` en el environment y ejecuta los escenarios en orden.
+La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` en el environment y ejecuta los escenarios en orden. `base_url` ya apunta a `http://localhost:5000` (local) y a `http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com` (AWS). El token se carga solo como valor actual, nunca como valor inicial: el workspace es público.
 
 ## Problemas conocidos en Windows
 Si el control de aplicaciones bloquea una extensión compilada (error `DLL load failed`), por ejemplo la de SQLAlchemy, instálala sin compilar:
