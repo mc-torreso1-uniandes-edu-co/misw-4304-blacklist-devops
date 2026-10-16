@@ -346,20 +346,61 @@ El registro completo del monitor está en `docs/despliegues/v2-allatonce.csv` y 
 
 | Dato | Valor |
 |---|---|
-| Política y lote | `Rolling`, [PENDIENTE: tipo y tamaño de lote] |
-| Versión anterior → nueva | [PENDIENTE] |
-| Fecha y hora de inicio | [PENDIENTE] |
-| (a) Instancias antes / máximo durante / después | [PENDIENTE] |
-| (c) Tiempo total | [PENDIENTE: __ min __ s] |
-| (d) Instancias iniciales o nuevas | [PENDIENTE: IDs antes y después] |
-| Solicitudes del monitor: total / no 200 | [PENDIENTE] |
-| Ventana con dos versiones respondiendo | [PENDIENTE] |
+| Política y lote | `Rolling`, tipo de lote `Fixed`, tamaño de lote 1 |
+| Versión anterior → nueva | `v2-allatonce` → `v3-rolling` |
+| Fecha y hora de inicio | 15 de octubre de 2026, 23:13:05 (UTC-5) |
+| (a) Instancias antes / máximo durante / después | 3 / 3 / 3 (`t3.micro`, una por zona); no se crearon instancias adicionales |
+| (c) Tiempo total | **8 min 10 s**: de "Environment update is starting" (23:13:05) a "Environment update completed successfully" (23:21:15) |
+| (d) Instancias iniciales o nuevas | **Iniciales**: se actualizaron por lotes las mismas 3 instancias (`i-0f7acc80fdc24a7d3`, `i-087c560a12e0ffa07` e `i-05159b8ef3f935e9d`); la implementación pasó de 3 a 4 en las tres |
+| Solicitudes del monitor: total / no 200 | 1.069 / 0; disponibilidad del 100 % |
+| Caída observada | Ninguna |
+| Ventana con dos versiones respondiendo | 4 min 41 s: de 23:13:50 a 23:18:31, con 151 cambios de versión entre solicitudes consecutivas |
 
-**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE]
+**(b) Cómo se validó que el despliegue estaba en ejecución:** el monitor consultó `/ping` cada segundo
+durante 17 min 48 s (1.069 solicitudes, todas con `200`) y registró 578 respuestas de
+`v2-allatonce` y 491 de `v3-rolling`, con las dos versiones alternándose mientras el balanceador
+repartía solicitudes entre instancias ya actualizadas y pendientes. Los eventos del entorno marcan los
+tres lotes, uno por instancia, y la espera de cada una en el balanceador. La pestaña *Estado y
+supervisión* mostró al final las 3 instancias en *Ok* con la implementación 4, y `/ping` respondió
+`{"version": "v3-rolling"}`.
 
-**(e) Capturas:** [PENDIENTE]
+**(e) Capturas:**
 
-**(f) Hallazgos:** [PENDIENTE]
+![Figura 41. Política Rolling con lote fijo de 1](capturas/2.4b-rolling-configuracion.png)
+
+![Figura 42. EC2: 3 instancias saludables antes de desplegar](capturas/2.4b-rolling-instancias-antes.png)
+
+![Figura 43. v3-rolling seleccionada para desplegar](capturas/2.4b-rolling-version-lista.png)
+
+![Figura 44. Eventos de los tres lotes y registro en el balanceador](capturas/2.4b-rolling-eventos.png)
+
+![Figura 45. Estado y supervisión después del despliegue: entorno Ok y 3 instancias Ok](capturas/2.4b-rolling-monitor.png)
+
+![Figura 46. Despliegue completado con v3-rolling](capturas/2.4b-rolling-despliegue-completado.png)
+
+![Figura 47. Las tres instancias finales en Ok con la implementación 4](capturas/2.4b-rolling-instancias-finales.png)
+
+![Figura 48. /ping responde v3-rolling](capturas/2.4b-rolling-ping-final-recorte.png)
+
+El registro completo del monitor está en `docs/despliegues/v3-rolling.csv` y el detalle en
+`docs/despliegues/2.4b-rolling.md`.
+
+**(f) Hallazgos:**
+- **Disponibilidad:** no hubo respuestas distintas de `200`: el balanceador solo envió solicitudes a las
+  instancias sanas durante todo el proceso, a diferencia de All at once.
+- **Salud durante el despliegue:** el entorno pasó a *Degraded* a las 23:13:48, cuando una de las tres
+  instancias estaba fuera del balanceador; a *Info* a las 23:14:47; y volvió a *Ok* a las 23:22:47.
+- **Capacidad:** se mantuvieron 3 instancias, pero con lote de 1 el servicio funcionó con 2 de 3
+  mientras se actualizaba cada una, un tercio menos de capacidad.
+- **Convivencia de versiones:** las dos versiones respondieron durante 4 min 41 s. Si una versión no
+  fuera compatible con la anterior, ese sería el periodo de riesgo.
+- **Duración:** 8 min 10 s, unas 23 veces la de All at once (21 s). Cada lote esperó 2 min 4 s a que
+  el balanceador marcara la instancia como sana (23:13:46 a 23:15:50, 23:16:27 a 23:18:31 y 23:19:07 a
+  23:21:11); el despliegue en cada instancia tomó unos 35 s.
+- **Costo:** sin instancias adicionales ni capacidad temporal extra.
+- **Rollback:** volver a la versión anterior exige otro despliegue Rolling completo.
+- **Cuándo conviene:** cuando se quiere evitar una caída total y se acepta un despliegue más largo y
+  con menos capacidad mientras dura.
 
 ### 5.3 Rolling with additional batch (`v4-rollingbatch`)
 
@@ -404,7 +445,7 @@ El registro completo del monitor está en `docs/despliegues/v2-allatonce.csv` y 
 | Estrategia | Tiempo total | Instancias (antes / máx. / después) | Caída observada | Instancias iniciales o nuevas |
 |---|---|---|---|---|
 | All at once | 0 min 21 s | 3 / 3 / 3 | Sí: 5 s, 5 respuestas `502` | Iniciales |
-| Rolling | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
+| Rolling | 8 min 10 s | 3 / 3 / 3 | No: 0 respuestas no-200 (100 %) | Iniciales, por lotes |
 | Rolling with additional batch | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
 | Immutable | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
 
@@ -434,7 +475,7 @@ cambia `base_url`.
 | Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 tests aprobados, 0 errores, respuesta promedio de 129 ms |
 | IP del cliente detrás del balanceador | Entorno de Beanstalk | Con `v1`, la del balanceador; con `v1.1` y `PROXY_FIX_X_FOR = 2`, la del cliente (figura 1) |
 
-![Figura 41. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
+![Figura 49. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
 
 El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas/2.5-prueba-paquete-v1.md`
 (paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
