@@ -19,9 +19,9 @@ los recursos mientras realizan una entrega sincrónica.
 
 ### Cómo lo aplica el equipo
 
-- El entorno se enciende solo en ventanas de trabajo: primer despliegue, pruebas contra AWS,
-  estrategias de despliegue y grabación del video. Al cerrar cada ventana se termina el entorno y se
-  detiene la RDS.
+- El entorno se enciende el 15 de octubre de 2026 para el primer despliegue y queda encendido durante
+  las pruebas contra AWS y las estrategias de despliegue, hasta grabar el video. Después de grabar se
+  termina el entorno y se detiene la RDS.
 - No hay periodo de revisión con el entorno encendido. Como el tutor no prueba la aplicación en vivo,
   el video debe mostrar contra la URL de Beanstalk el POST, el GET, `/ping` y la ejecución de la
   colección de Postman.
