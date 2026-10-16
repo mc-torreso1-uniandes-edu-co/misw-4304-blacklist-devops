@@ -622,6 +622,58 @@ entero mayor o igual a 1; otro valor detiene el arranque con un mensaje claro.
 
 *Cierra el punto 2 del documento (20 %) con la comparación de las estrategias.*
 
-[PENDIENTE: conclusiones a partir de los resultados de las estrategias y de las pruebas contra AWS.
-Puntos a cubrir: estrategia recomendada para este servicio y por qué, compromiso entre tiempo,
-disponibilidad y costo observado, y lecciones del despliegue manual.]
+**Resultado.** El microservicio de lista negra quedó desplegado de forma manual en AWS Elastic Beanstalk,
+con PostgreSQL en Amazon RDS, y responde POST, GET y `/ping` con el token estático. La colección de
+Postman pasa 22 de 22 tests contra la URL del entorno y la IP guardada es la del cliente. Se ejecutaron
+las cuatro estrategias de despliegue sobre el mismo entorno de 3 instancias, con versiones que solo
+cambian la etiqueta de `VERSION`, así que las diferencias medidas se deben a la estrategia.
+
+**Compromiso entre tiempo, disponibilidad y costo.**
+
+| Estrategia | Tiempo | Disponibilidad medida | Costo temporal | Convivencia de versiones |
+|---|---|---|---|---|
+| All at once | 21 s | Caída total de 5 s | Ninguno | Ninguna |
+| Rolling | 8 min 10 s | Sin caída; 2 de 3 instancias durante cada lote | Ninguno | 4 min 41 s |
+| Rolling with additional batch | 9 min 19 s | Sin caída | 1 instancia adicional | 7 min 38 s |
+| Immutable | 16 min 53 s | Sin caída | Hasta 3 instancias adicionales (6 en total) | 13 min 14 s |
+
+Ninguna estrategia fue mejor en las tres dimensiones. All at once gana en tiempo y costo, pero es la
+única que dejó el servicio sin responder. Las otras tres evitaron la caída a cambio de más tiempo, y
+Immutable es la que más tiempo y más capacidad temporal necesitó.
+
+**Estrategia recomendada para este servicio.** El servicio lo consultan sistemas internos de toda la
+empresa, así que una caída de unos segundos tiene impacto. Por eso se descarta All at once fuera de
+entornos de desarrollo o pruebas. Para las actualizaciones habituales se recomienda **Rolling with
+additional batch**: no tuvo caída, conserva la capacidad de las 3 instancias durante la actualización
+y solo tardó 1 min 9 s más que Rolling, a cambio de una instancia adicional temporal. Para cambios con
+más riesgo, como una actualización de dependencias o un cambio en el esquema de la base, se recomienda
+**Immutable**: valida la versión en instancias nuevas antes de tocar las originales y permite un
+rollback seguro mientras no se traspasa el grupo nuevo.
+
+Con las tres estrategias que mantienen el servicio, las dos versiones responden a la vez durante entre 4
+y 13 minutos. Cada versión debe ser compatible con la anterior, en especial en lo que toca a la base
+de datos, que es compartida.
+
+**Lecciones del despliegue manual.**
+- **La prueba local no cubrió la IP del cliente.** Con un solo proxy simulado el código funcionaba,
+  pero en Beanstalk hay dos (el balanceador y el nginx de la instancia) y la primera versión guardó la
+  IP del balanceador. Se detectó consultando la tabla desde una instancia y se corrigió con una
+  propiedad del entorno (`PROXY_FIX_X_FOR`), sin cambiar el código. Conviene verificar en el entorno real
+  cada dato que depende de la infraestructura.
+- **La consola de Beanstalk no refleja la caída de All at once.** La salud mejorada pasó a *Info* 4 s
+  después de terminar el despliegue y nunca mostró los 5 s de respuestas `502`; solo el monitor externo
+  las registró. Para medir disponibilidad hace falta un monitor propio.
+- **La medición también necesita verificación.** El monitor se corrigió tras una revisión para que un
+  corte de conexión no lo detuviera, y en dos estrategias tuvo pausas del equipo que lo ejecutó
+  (82 s y 113 s sin muestrear); se documentaron en lugar de ocultarlas.
+- **Crear el entorno desde la consola falló dos veces** porque el formulario propone otro rol de
+  servicio que el de la configuración guardada. Se creó con la AWS CLI y el procedimiento quedó
+  documentado para recrear el ambiente.
+- **El plan gratuito no impidió ninguna de las cuatro estrategias.** Ninguna mostró el aviso de
+  "características avanzadas"; la cuota de 32 vCPU alcanzó para el máximo de 6 instancias.
+- **Probar el paquete antes de cargarlo** (contenido, instalación limpia y `/ping` con su etiqueta) y
+  no regenerarlo después permitió desplegar siempre lo que se había probado.
+
+**Siguientes pasos.** Quedan fuera de esta primera iteración, pero serían los más valiosos: servir el
+API por HTTPS (hoy el token Bearer viaja por HTTP), emitir el token con expiración y rotación, y
+automatizar el despliegue y su medición cuando el curso lo permita.
