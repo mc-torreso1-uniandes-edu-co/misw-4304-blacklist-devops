@@ -288,22 +288,57 @@ devuelve `/ping`, lo que permite ver qué instancias atienden la versión nueva 
 
 | Dato | Valor |
 |---|---|
-| Política y lote | `AllAtOnce` |
+| Política y lote | `AllAtOnce` (sin lotes: se actualiza el 100 % de las instancias) |
 | Versión anterior → nueva | `v1.1` → `v2-allatonce` |
-| Fecha y hora de inicio | [PENDIENTE] |
-| (a) Instancias antes / máximo durante / después | [PENDIENTE] |
-| (c) Tiempo total | [PENDIENTE: __ min __ s] |
-| (d) Instancias iniciales o nuevas | [PENDIENTE: IDs antes y después] |
-| Solicitudes del monitor: total / no 200 | [PENDIENTE] |
+| Fecha y hora de inicio | 15 de octubre de 2026, 21:51:25 (UTC-5) |
+| (a) Instancias antes / máximo durante / después | 3 / 3 / 3 (`t3.micro`, una por zona); no se crearon instancias adicionales |
+| (c) Tiempo total | **0 min 21 s**: de "Environment update is starting" (21:51:25) a "Environment update completed successfully" (21:51:46) |
+| (d) Instancias iniciales o nuevas | **Iniciales**: los mismos 3 IDs antes y después (`i-087c560a12e0ffa07`, `i-05159b8ef3f935e9d` e `i-0f7acc80fdc24a7d3`), lanzados el 15 de octubre a las 14:44:09 |
+| Solicitudes del monitor: total / no 200 | 480 / 5: 475 con `200` y 5 con `502`; disponibilidad del 98,96 % |
+| Caída observada | 5 s: de 21:51:34.9 hasta la siguiente respuesta `200` a las 21:51:39.9 |
+| Ventana con dos versiones respondiendo | Ninguna |
 
-**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE: eventos, pestaña *Estado y
-supervisión* y monitor de `/ping`.]
+**(b) Cómo se validó que el despliegue estaba en ejecución:** con cuatro fuentes. El monitor
+consultó `/ping` cada segundo y registró la versión de cada respuesta: `v1.1` hasta las 21:51:33 y
+`v2-allatonce` desde las 21:51:39. Los eventos del entorno marcan el inicio, el despliegue en las
+instancias y el final. La pestaña *Estado y supervisión* mostró las 3 instancias en *Ok* con la
+implementación 3. Y `/ping` respondió `{"version": "v2-allatonce"}` al terminar.
 
-**(e) Capturas:** [PENDIENTE: política de despliegue, eventos de inicio y fin, *Estado y supervisión*
-durante el despliegue, instancias EC2 antes y después, resumen del monitor.]
+**(e) Capturas:**
 
-**(f) Hallazgos:** [PENDIENTE: disponibilidad, capacidad durante el despliegue, duración comparada,
-costo, riesgo y *rollback*, cuándo se recomienda.]
+![Figura 32. Política de implementación AllAtOnce](capturas/2.4a-politica.png)
+
+![Figura 33. EC2: las 3 instancias antes de desplegar](capturas/2.4a-instancias-antes.png)
+
+![Figura 34. v2-allatonce seleccionada; v1.1 implementada en el entorno](capturas/2.4a-versiones-antes.png)
+
+![Figura 35. Ventana Implementar: v2-allatonce en Blacklist-devops-env](capturas/2.4a-implementar.png)
+
+![Figura 36. Eventos del despliegue, de 21:51:25 a 21:51:50](capturas/2.4a-eventos.png)
+
+![Figura 37. Estado y supervisión: v2-allatonce, 3 instancias en Ok con la implementación 3](capturas/2.4a-salud-despues.png)
+
+![Figura 38. Historial de implementaciones: All at once, 21 s](capturas/2.4a-implementaciones.png)
+
+![Figura 39. EC2: los mismos 3 IDs después del despliegue](capturas/2.4a-instancias-despues.png)
+
+![Figura 40. /ping responde v2-allatonce](capturas/2.4a-ping.png)
+
+El registro completo del monitor está en `docs/despliegues/v2-allatonce.csv` y el detalle en
+`docs/despliegues/2.4a-all-at-once.md`.
+
+**(f) Hallazgos:**
+- **Disponibilidad:** hubo una caída total de 5 s (5 solicitudes seguidas con `502`) entre la última
+  respuesta de `v1.1` y la primera de `v2-allatonce`. Las 3 instancias reiniciaron la aplicación al
+  mismo tiempo y el balanceador no tuvo ninguna instancia sana a la cual enviar las solicitudes.
+- **Capacidad:** durante la caída atendían 0 de 3 instancias; antes y después, las 3.
+- **Duración:** 21 s, la más corta, porque no crea instancias ni actualiza por lotes.
+- **Costo:** sin instancias adicionales.
+- **Rollback:** volver a `v1.1` exige otro despliegue completo, con otra caída.
+- **Salud del entorno:** la salud mejorada pasó a *Info* 4 s después de terminar el despliegue y
+  volvió a *Ok* un minuto más tarde. La consola no muestra la caída; el monitor sí la registra.
+- **Cuándo conviene:** entornos de desarrollo o pruebas, o ventanas de mantenimiento en las que se
+  acepta una interrupción breve.
 
 ### 5.2 Rolling (`v3-rolling`)
 
@@ -366,7 +401,7 @@ costo, riesgo y *rollback*, cuándo se recomienda.]
 
 | Estrategia | Tiempo total | Instancias (antes / máx. / después) | Caída observada | Instancias iniciales o nuevas |
 |---|---|---|---|---|
-| All at once | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
+| All at once | 0 min 21 s | 3 / 3 / 3 | Sí: 5 s, 5 respuestas `502` | Iniciales |
 | Rolling | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
 | Rolling with additional batch | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
 | Immutable | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
@@ -397,7 +432,7 @@ cambia `base_url`.
 | Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 tests aprobados, 0 errores, respuesta promedio de 129 ms |
 | IP del cliente detrás del balanceador | Entorno de Beanstalk | Con `v1`, la del balanceador; con `v1.1` y `PROXY_FIX_X_FOR = 2`, la del cliente (figura 1) |
 
-![Figura 32. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
+![Figura 41. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
 
 El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas/2.5-prueba-paquete-v1.md`
 (paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
