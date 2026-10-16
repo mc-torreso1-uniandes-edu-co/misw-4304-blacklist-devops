@@ -1,5 +1,5 @@
 # Microservicio de Lista Negra Global de Emails
-Proyecto de DevOps - MISW - 202615. Grupo 20: Blacklist DevOps
+Proyecto de DevOps - MISW - 202615. Grupo Blacklist DevOps
 
 ## Requisitos
 - Python 3.13.16 (la versión de `.python-version`). Se instala desde python.org o con `uv python install 3.13.16`
