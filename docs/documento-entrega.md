@@ -67,13 +67,19 @@ Amazon RDS PostgreSQL 16 (db.t4g.micro, sin acceso público)
 | Base de datos | RDS `blacklist-db`, PostgreSQL 16.13, `db.t4g.micro`, 20 GB gp3, una zona, sin acceso público |
 | Red | `blacklist-app-sg` para las instancias; `blacklist-db-sg` solo admite 5432 desde `blacklist-app-sg` |
 | Roles de IAM | Servicio: `blacklist-eb-service-rol`. Instancias: `blacklist-ec2-instance-rol` |
-| Configuración | `DATABASE_URL`, `JWT_SECRET_KEY` y `APP_ENV` como propiedades del entorno; ningún secreto en el repositorio |
+| Configuración | `DATABASE_URL`, `JWT_SECRET_KEY`, `APP_ENV` y `PROXY_FIX_X_FOR` como propiedades del entorno; ningún secreto en el repositorio |
 | Configuración reproducible | Configuración guardada `blacklist-base`, con la que se recrea el entorno con la misma URL |
 
 Para guardar la IP del cliente y no la del balanceador, la aplicación lee el encabezado
-`X-Forwarded-For` con `ProxyFix` de Werkzeug. Se verificó en local con un proxy simulado (sección 6).
-[PENDIENTE: resultado de la verificación en el entorno de Beanstalk, donde la solicitud pasa por el
-balanceador y por nginx (#35).]
+`X-Forwarded-For` con `ProxyFix` de Werkzeug. En Beanstalk la solicitud pasa por el balanceador y por
+el nginx de la instancia, y cada uno agrega una entrada al encabezado (`cliente, balanceador`). La
+primera versión desplegada (`v1`) tomaba un solo salto y guardó la IP privada del balanceador
+(`172.31.21.107`). La versión `v1.1` lee el número de saltos de la propiedad `PROXY_FIX_X_FOR`, que en
+el entorno vale `2`, y guarda la IP pública del cliente. Con dos saltos, una entrada falsa enviada por
+el cliente queda a la izquierda y no se toma. La consulta de la tabla desde una instancia muestra los
+dos registros:
+
+![Figura 1. IP guardada en RDS: con v1.1, la del cliente (181.237.182.151); con v1, la del balanceador (172.31.21.107)](capturas/1.7b-ip-guardada.png)
 
 ## 3. Enlaces de la entrega
 
@@ -85,9 +91,10 @@ balanceador y por nginx (#35).]
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
 | Video de sustentación | [PENDIENTE: enlace del video] |
 
-El entorno se enciende solo durante el trabajo y la grabación del video, según la aclaración del
-tutor sobre los recursos de AWS. La configuración guardada permite volver a proveerlo con la misma URL
-si se cita a una sustentación síncrona.
+Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido durante el
+trabajo y la grabación del video: se encendió el 15 de octubre de 2026 para el primer despliegue y se
+apaga después de grabar. La configuración guardada y las versiones cargadas permiten volver a proveerlo
+con la misma URL si se cita a una sustentación síncrona.
 
 ## 4. Paso a paso de la creación y el despliegue en AWS Elastic Beanstalk
 
@@ -98,9 +105,9 @@ La infraestructura se creó manualmente por la consola de AWS, sin servicios de 
 los recursos se verificó la cuenta, la región y la cuota de vCPU, que limita cuántas instancias
 pueden existir a la vez durante las estrategias que agregan instancias.
 
-![Figura 1. Cuenta y región us-east-2](capturas/2-cuenta-region.png)
+![Figura 2. Cuenta y región us-east-2](capturas/2-cuenta-region.png)
 
-![Figura 2. Cuota de vCPU On-Demand de la cuenta (32)](capturas/2-cuota-vcpu.png)
+![Figura 3. Cuota de vCPU On-Demand de la cuenta (32)](capturas/2-cuota-vcpu.png)
 
 ### 4.a Configuración de RDS
 
@@ -118,32 +125,34 @@ de seguridad que solo admite conexiones desde las instancias de la aplicación.
 | Grupo de seguridad | `blacklist-db-sg`: PostgreSQL 5432 solo desde `blacklist-app-sg` |
 | Supervisión | Monitoreo mejorado desactivado |
 
-![Figura 3. Selección del motor PostgreSQL](capturas/3a-rds-motor-postgresql.png)
+![Figura 4. Selección del motor PostgreSQL](capturas/3a-rds-motor-postgresql.png)
 
-![Figura 4. Plantilla de capa gratuita](capturas/3a-rds-capa-gratuita.png)
+![Figura 5. Plantilla de capa gratuita](capturas/3a-rds-capa-gratuita.png)
 
-![Figura 5. Identificador de la base y usuario maestro](capturas/3a-rds-identificador.png)
+![Figura 6. Identificador de la base y usuario maestro](capturas/3a-rds-identificador.png)
 
-![Figura 6. Credenciales autoadministradas](capturas/3a-rds-credenciales.png)
+![Figura 7. Credenciales autoadministradas](capturas/3a-rds-credenciales.png)
 
-![Figura 7. Clase de instancia y almacenamiento](capturas/3a-rds-clase-almacenamiento.png)
+![Figura 8. Clase de instancia y almacenamiento](capturas/3a-rds-clase-almacenamiento.png)
 
-![Figura 8. Conectividad, sin acceso público](capturas/3a-rds-conectividad.png)
+![Figura 9. Conectividad, sin acceso público](capturas/3a-rds-conectividad.png)
 
-![Figura 9. Grupo de seguridad de la base](capturas/3a-rds-grupo-seguridad.png)
+![Figura 10. Grupo de seguridad de la base](capturas/3a-rds-grupo-seguridad.png)
 
-![Figura 10. Supervisión](capturas/3a-rds-supervision.png)
+![Figura 11. Supervisión](capturas/3a-rds-supervision.png)
 
-![Figura 11. Opciones de base de datos](capturas/3a-rds-opciones.png)
+![Figura 12. Opciones de base de datos](capturas/3a-rds-opciones.png)
 
-![Figura 12. Mantenimiento](capturas/3a-rds-mantenimiento.png)
+![Figura 13. Mantenimiento](capturas/3a-rds-mantenimiento.png)
 
-![Figura 13. Base de datos creada](capturas/3a-rds-creada.png)
+![Figura 14. Base de datos creada](capturas/3a-rds-creada.png)
 
-![Figura 14. Regla de entrada de blacklist-db-sg: 5432 desde blacklist-app-sg](capturas/3b-rds-sg-entrada.png)
+![Figura 15. Regla de entrada de blacklist-db-sg: 5432 desde blacklist-app-sg](capturas/3b-rds-sg-entrada.png)
 
 La cadena de conexión se registra solo como propiedad `DATABASE_URL` del entorno de Beanstalk. Las
 tablas las crea la aplicación al iniciar.
+
+![Figura 16. blacklist-db disponible el 15 de octubre de 2026, antes del primer despliegue](capturas/1.7b-rds-available.png)
 
 ### 4.b Configuración del proyecto en AWS Beanstalk
 
@@ -151,7 +160,7 @@ Antes del entorno se creó el grupo de seguridad de las instancias, `blacklist-a
 entrada. Se conserva entre ventanas de trabajo para que la regla de la base siga vigente cada vez que
 se recrea el entorno.
 
-![Figura 15. Grupo de seguridad de las instancias](capturas/4-app-sg.png)
+![Figura 17. Grupo de seguridad de las instancias](capturas/4-app-sg.png)
 
 El entorno se creó en modo estándar con estos parámetros:
 
@@ -168,28 +177,50 @@ El entorno se creó en modo estándar con estos parámetros:
 | Balanceador | Application Load Balancer público |
 | Actualizaciones administradas | Desactivadas |
 | Registros en CloudWatch | Desactivados |
-| Propiedades del entorno | `APP_ENV`, `DATABASE_URL`, `JWT_SECRET_KEY` (valores fuera del documento) |
+| Propiedades del entorno | `APP_ENV`, `DATABASE_URL`, `JWT_SECRET_KEY` (valores fuera del documento) y `PROXY_FIX_X_FOR = 2` |
 
-![Figura 16. Modo estándar y nombre del entorno](capturas/5a-eb-general.png)
+![Figura 18. Modo estándar y nombre del entorno](capturas/5a-eb-general.png)
 
-![Figura 17. Opciones de la plataforma, rol de servicio y perfil de instancia](capturas/5b-eb-opciones-plataforma-roles.png)
+![Figura 19. Opciones de la plataforma, rol de servicio y perfil de instancia](capturas/5b-eb-opciones-plataforma-roles.png)
 
-![Figura 18. Escalado de 3 a 6 instancias y balanceador](capturas/5c-eb-escalado.png)
+![Figura 20. Escalado de 3 a 6 instancias y balanceador](capturas/5c-eb-escalado.png)
 
-![Figura 19. Cómputo: t3.micro, x86_64](capturas/5d-eb-computo.png)
+![Figura 21. Cómputo: t3.micro, x86_64](capturas/5d-eb-computo.png)
 
-![Figura 20. Redes, subredes y grupo de seguridad de las instancias](capturas/5e-eb-redes.png)
+![Figura 22. Redes, subredes y grupo de seguridad de las instancias](capturas/5e-eb-redes.png)
 
-![Figura 21. Subredes del balanceador](capturas/5g-eb-subredes-elb.png)
+![Figura 23. Subredes del balanceador](capturas/5g-eb-subredes-elb.png)
 
-![Figura 22. Entorno en estado Ok y configuración guardada](capturas/5h-eb-entorno-ok.png)
+![Figura 24. Entorno en estado Ok y configuración guardada](capturas/5h-eb-entorno-ok.png)
 
-La versión `v1` se empaquetó desde `main` con el script del repositorio (`scripts/empaquetar.py`),
-que genera el `.zip` con el archivo `VERSION` que devuelve `/ping`. El paquete se probó antes de
-cargarlo y se desplegó como versión de aplicación `v1`.
+**Primer despliegue (15 de octubre de 2026).** La versión `v1` se empaquetó desde `main` con el script
+del repositorio (`scripts/empaquetar.py`), que ejecuta las pruebas y genera el `.zip` con el archivo
+`VERSION` que devuelve `/ping`. El paquete se probó en una carpeta limpia antes de cargarlo y se cargó
+una sola vez como versión de aplicación `v1`. Después se inició la RDS y se creó el entorno desde la
+configuración guardada `blacklist-base` con esa versión. La creación tomó 3 min 13 s y terminó con
+salud *Ok* en las 3 instancias.
 
-[PENDIENTE: captura del entorno con la versión `v1` desplegada, salud *Ok* con 3 instancias y `/ping`
-respondiendo `{"version": "v1"}` (#35).]
+![Figura 25. Eventos de la creación del entorno: lanzado con éxito en 3 minutos](capturas/1.7b-eb-eventos.png)
+
+![Figura 26. Historial de implementaciones: creación del entorno con v1, 3 min 13 s](capturas/1.7b-eb-version-v1.png)
+
+![Figura 27. /ping en la URL del entorno responde la versión v1](capturas/1.7b-ping-v1.png)
+
+Al recrear el entorno desde la consola, el formulario propone el rol de servicio
+`aws-elasticbeanstalk-service-role` en lugar de `blacklist-eb-service-rol`, y la creación falla
+porque la configuración guardada usa este último para las actualizaciones administradas. El entorno se
+creó con la AWS CLI desde `blacklist-base`, que conserva los roles de la plantilla. El procedimiento
+quedó en `docs/despliegues/1.7-infraestructura-reproducible.md`.
+
+**Versión `v1.1`.** La verificación en AWS mostró que `v1` guardaba la IP del balanceador (sección 2).
+Se generó `v1.1` desde `main`, que ya leía `PROXY_FIX_X_FOR`, y se desplegó junto con la propiedad
+`PROXY_FIX_X_FOR = 2` en una sola actualización del entorno (política *All at once*, 1 minuto). La
+propiedad también se agregó a `blacklist-base`. Con `v1.1` en las 3 instancias, el POST y el GET
+responden contra RDS desde Postman con el environment de AWS:
+
+![Figura 28. POST /blacklists contra el entorno de Beanstalk: 201 Created](capturas/1.7b-postman-post-v1.1.png)
+
+![Figura 29. GET /blacklists/<email> con el email agregado: 200, is_blacklisted true y el motivo](capturas/1.7b-postman-get-v1.1.png)
 
 ### 4.c Configuración de los health checks
 
@@ -216,9 +247,12 @@ option_settings:
 | Demora en la anulación del registro | 20 s |
 | Informes de salud | Mejorados (*enhanced*) |
 
-![Figura 23. Comprobación de estado del proceso default: /ping, código 200](capturas/5f-eb-healthcheck.png)
+![Figura 30. Comprobación de estado del proceso default: /ping, código 200](capturas/5f-eb-healthcheck.png)
 
-[PENDIENTE: captura de la pestaña *Health* del entorno con las 3 instancias en *Ok* (#35).]
+Con el entorno en ejecución, la pestaña *Estado y supervisión* muestra la salud *Ok* del entorno y de
+las 3 instancias, que reciben las comprobaciones del balanceador y las solicitudes de los clientes:
+
+![Figura 31. Estado y supervisión: entorno Ok y 3 instancias en Ok con el mismo despliegue](capturas/1.7b-eb-entorno-ok.png)
 
 ## 5. Estrategias de despliegue
 
@@ -234,16 +268,19 @@ devuelve `/ping`, lo que permite ver qué instancias atienden la versión nueva 
 - Tiempo total: desde el evento de inicio del despliegue hasta el evento de finalización en la pestaña
   *Events* del entorno.
 - Instancias: lista de instancias del entorno en EC2 antes, durante y después del despliegue.
-- Disponibilidad: un monitor consulta `/ping` a intervalos regulares durante todo el despliegue y
-  registra el código HTTP y la versión de cada respuesta. Los registros se guardan en
-  `docs/despliegues/`.
+- Disponibilidad: el monitor del repositorio (`scripts/monitor_disponibilidad.py`) consulta `/ping`
+  cada segundo durante todo el despliegue y registra la hora, el código HTTP, la versión y la latencia
+  de cada respuesta en un CSV de `docs/despliegues/`. Al detenerlo resume las respuestas que no fueron
+  200, la caída más larga, las versiones observadas y la ventana en la que respondieron dos versiones.
+- Paquetes: cada versión se generó desde `main` y se probó en una carpeta limpia antes de cargarla. Las
+  cuatro tienen el mismo código que `v1.1` y solo cambian la etiqueta de `VERSION`.
 
 ### 5.1 All at once (`v2-allatonce`)
 
 | Dato | Valor |
 |---|---|
 | Política y lote | `AllAtOnce` |
-| Versión anterior → nueva | [PENDIENTE] |
+| Versión anterior → nueva | `v1.1` → `v2-allatonce` |
 | Fecha y hora de inicio | [PENDIENTE] |
 | (a) Instancias antes / máximo durante / después | [PENDIENTE] |
 | (c) Tiempo total | [PENDIENTE: __ min __ s] |
@@ -337,17 +374,21 @@ cambia `base_url`.
 
 | Prueba | Entorno | Resultado |
 |---|---|---|
-| Pruebas automáticas (pytest) | SQLite en memoria | 50 pruebas aprobadas, cobertura del 100 % |
+| Pruebas automáticas (pytest) | SQLite en memoria | 60 pruebas aprobadas, cobertura del 100 % de `app/` |
 | Colección de Postman | Aplicación local con SQLite | 22 de 22 tests aprobados |
 | Colección de Postman | Gunicorn y PostgreSQL en contenedores | 22 de 22 tests aprobados |
 | IP del cliente con `X-Forwarded-For` | Gunicorn y PostgreSQL en contenedores | Se guarda la IP del cliente enviada en el encabezado |
 | Persistencia después de reiniciar | Gunicorn y PostgreSQL en contenedores | Los registros se conservan y el GET responde 200 |
-| Paquete `v1` antes de cargarlo | Contenido del `.zip` | Paquete verificado y cargado con el mismo SHA-256 |
-| Colección de Postman | Entorno de Beanstalk | [PENDIENTE: resultado del runner contra la URL del entorno (#43)] |
-| IP del cliente detrás del balanceador | Entorno de Beanstalk | [PENDIENTE: IP guardada en RDS (#35)] |
+| Paquete `v1` antes de cargarlo | Carpeta limpia, Gunicorn en contenedor | Paquete verificado y cargado con el mismo SHA-256 |
+| Paquetes `v2-allatonce` a `v5-immutable` antes de cargarlos | Carpeta limpia, Gunicorn en contenedor | `/ping` con su etiqueta, POST 201, GET 200 y 401 sin token en los cuatro |
+| POST y GET | Entorno de Beanstalk con `v1.1` | 201 y 200 contra RDS (figuras 28 y 29) |
+| Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 tests aprobados, 0 errores, respuesta promedio de 129 ms |
+| IP del cliente detrás del balanceador | Entorno de Beanstalk | Con `v1`, la del balanceador; con `v1.1` y `PROXY_FIX_X_FOR = 2`, la del cliente (figura 1) |
 
-El detalle de las pruebas locales y del paquete está en `docs/pruebas/2.3-pruebas-locales.md` y
-`docs/pruebas/2.5-prueba-paquete-v1.md`.
+![Figura 32. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
+
+El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas/2.5-prueba-paquete-v1.md`
+(paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
 
 ## 7. Limitaciones y decisiones
 
@@ -358,10 +399,12 @@ El detalle de las pruebas locales y del paquete está en `docs/pruebas/2.3-prueb
 - Algunas opciones de la consola muestran el aviso de "características avanzadas" y no se activan. Se
   verificó que la política de despliegue *Rolling* se puede elegir sin ese aviso.
   [PENDIENTE: otras opciones bloqueadas encontradas durante las estrategias.]
-- Para controlar el costo, el entorno se enciende solo en ventanas de trabajo y se apaga al cerrarlas:
-  se termina el entorno y se detiene la RDS. La configuración guardada `blacklist-base` y las
-  versiones cargadas permiten recrearlo con la misma URL. El costo de referencia con el entorno
-  encendido es de unos 0,07 USD por hora, y el balanceador es el componente que más pesa.
+- Para controlar el costo, el entorno solo está encendido mientras se trabaja: se encendió para el
+  primer despliegue y sigue así durante las pruebas contra AWS y las estrategias, hasta grabar el
+  video. Después se termina el entorno y se elimina la RDS con un snapshot final. La configuración
+  guardada `blacklist-base`, el snapshot y las versiones cargadas permiten recrearlo con la misma URL.
+  El costo de referencia con el entorno encendido es de unos 0,07 USD por hora, y el balanceador es el
+  componente que más pesa.
 
 **Postman gratuito.** El workspace es público y pertenece al equipo de Postman del grupo, como lo
 permite el enunciado. Para colaborar, la colección y los environments se exportan en formato JSON y se
@@ -386,8 +429,17 @@ una vez con `scripts/generar_token.py`. No hay endpoints de registro, inicio de 
 balanceador no marca las instancias como no saludables por un problema de credenciales o de la base, y
 la versión permite seguir cada estrategia de despliegue.
 
+**IP del cliente detrás del balanceador.** La prueba local simulaba un solo proxy, pero en Beanstalk
+hay dos: el balanceador y el nginx de cada instancia. Con `v1` se guardaba la IP del balanceador. En
+lugar de fijar otro valor en el código, el número de saltos se configura con la propiedad
+`PROXY_FIX_X_FOR` (por defecto 1), que en el entorno vale 2. No se usa un valor mayor que el número
+real de proxies, porque un cliente podría enviar un `X-Forwarded-For` falso y se guardaría esa IP. El
+hallazgo se corrigió con `v1.1` antes de las estrategias, así que las cuatro versiones guardan la IP
+del cliente.
+
 **Configuración de la aplicación.** `APP_ENV` acepta `development`, `production` o `testing`; si queda
-vacía se usa `development`. En el entorno de Beanstalk vale `production`.
+vacía se usa `development`. En el entorno de Beanstalk vale `production`. `PROXY_FIX_X_FOR` debe ser un
+entero mayor o igual a 1; otro valor detiene el arranque con un mensaje claro.
 
 ## 8. Conclusiones
 
