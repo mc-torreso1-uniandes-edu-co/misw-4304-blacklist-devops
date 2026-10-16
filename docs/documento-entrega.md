@@ -279,8 +279,10 @@ devuelve `/ping`, lo que permite ver qué instancias atienden la versión nueva 
 - Instancias: lista de instancias del entorno en EC2 antes, durante y después del despliegue.
 - Disponibilidad: el monitor del repositorio (`scripts/monitor_disponibilidad.py`) consulta `/ping`
   cada segundo durante todo el despliegue y registra la hora, el código HTTP, la versión y la latencia
-  de cada respuesta en un CSV de `docs/despliegues/`. Al detenerlo resume las respuestas que no fueron
-  200, la caída más larga, las versiones observadas y la ventana en la que respondieron dos versiones.
+  de cada respuesta en un CSV de `docs/despliegues/`. Un corte de conexión se registra como código 0
+  y no detiene el monitor. Al detenerlo resume las respuestas que no fueron 200, la mayor caída (desde
+  la primera respuesta que no fue 200 hasta la siguiente respuesta 200), las versiones observadas y la
+  ventana en la que respondieron dos versiones.
 - Paquetes: cada versión se generó desde `main` y se probó en una carpeta limpia antes de cargarla. Las
   cuatro tienen el mismo código que `v1.1` y solo cambian la etiqueta de `VERSION`.
 
@@ -421,7 +423,7 @@ cambia `base_url`.
 
 | Prueba | Entorno | Resultado |
 |---|---|---|
-| Pruebas automáticas (pytest) | SQLite en memoria | 60 pruebas aprobadas, cobertura del 100 % de `app/` |
+| Pruebas automáticas (pytest) | SQLite en memoria | 85 pruebas aprobadas (60 de la aplicación y 25 del monitor de disponibilidad), cobertura del 100 % de `app/` |
 | Colección de Postman | Aplicación local con SQLite | 22 de 22 tests aprobados |
 | Colección de Postman | Gunicorn y PostgreSQL en contenedores | 22 de 22 tests aprobados |
 | IP del cliente con `X-Forwarded-For` | Gunicorn y PostgreSQL en contenedores | Se guarda la IP del cliente enviada en el encabezado |
@@ -447,8 +449,9 @@ equipo.*
 - Sin grupos de IAM: los permisos se asignan con los roles del proyecto y las personas se agregan por
   la página del equipo de la cuenta.
 - Algunas opciones de la consola muestran el aviso de "características avanzadas" y no se activan. Se
-  verificó que la política de despliegue *Rolling* se puede elegir sin ese aviso.
-  [PENDIENTE: otras opciones bloqueadas encontradas durante las estrategias.]
+  verificó que la política de despliegue *Rolling* se puede elegir sin ese aviso, y se aplicó con lote
+  fijo de 1. *All at once* es la política por defecto del entorno.
+  [PENDIENTE: confirmar si *Rolling with additional batch* e *Immutable* se aplican sin el aviso.]
 - Para controlar el costo, el entorno solo está encendido mientras se trabaja: se encendió para el
   primer despliegue y sigue así durante las pruebas contra AWS y las estrategias, hasta grabar el
   video. Después se termina el entorno y se elimina la RDS con un snapshot final. La configuración
