@@ -406,39 +406,113 @@ El registro completo del monitor está en `docs/despliegues/v3-rolling.csv` y el
 
 | Dato | Valor |
 |---|---|
-| Política y lote | `RollingWithAdditionalBatch`, [PENDIENTE: tipo y tamaño de lote] |
-| Versión anterior → nueva | [PENDIENTE] |
-| Fecha y hora de inicio | [PENDIENTE] |
-| (a) Instancias antes / máximo durante / después | [PENDIENTE] |
-| (c) Tiempo total | [PENDIENTE: __ min __ s] |
-| (d) Instancias iniciales o nuevas | [PENDIENTE: IDs antes y después] |
-| Solicitudes del monitor: total / no 200 | [PENDIENTE] |
-| Ventana con dos versiones respondiendo | [PENDIENTE] |
+| Política y lote | `RollingWithAdditionalBatch`, tipo de lote `Fixed`, tamaño de lote 1 |
+| Versión anterior → nueva | `v3-rolling` → `v4-rollingbatch` |
+| Fecha y hora de inicio | 16 de octubre de 2026, 11:41:49 (UTC-5) |
+| (a) Instancias antes / máximo durante / después | 3 / 4 / 3: las 3 permanentes más 1 instancia adicional temporal (`t3.micro`) |
+| (c) Tiempo total | **9 min 19 s**: de "Environment update is starting" (11:41:49) a "Environment update completed successfully" (11:51:08) |
+| (d) Instancias iniciales o nuevas | **Mixto**: se creó `i-03d76ef45d72321de` (nueva, lote adicional), se actualizaron en su lugar `i-0f7acc80fdc24a7d3` e `i-05159b8ef3f935e9d` (iniciales) y se terminó `i-087c560a12e0ffa07` (inicial, excedente) |
+| Solicitudes del monitor: total / no 200 | 891 / 0; 100 % de las solicitudes registradas (82 s sin muestrear, en 28 pausas de 3 a 4,6 s del equipo que ejecutó el monitor) |
+| Caída observada | Ninguna |
+| Ventana con dos versiones respondiendo | 7 min 38 s: de 11:43:23 a 11:51:01, con 173 cambios de versión entre solicitudes consecutivas |
 
-**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE]
+**(b) Cómo se validó que el despliegue estaba en ejecución:** el monitor consultó `/ping` cada segundo
+durante 16 min 12 s y registró 374 respuestas de `v3-rolling` y 517 de `v4-rollingbatch`, con las dos
+versiones alternándose mientras avanzaban los lotes. Los eventos del entorno muestran el lote adicional
+(lote 1, la instancia nueva), los lotes 2 y 3 sobre las instancias iniciales y la terminación de la
+instancia excedente. La lista de instancias de EC2 mostró 4 durante el despliegue, y *Estado y
+supervisión* mostró al final las 3 finales en *Ok* con `v4-rollingbatch`.
 
-**(e) Capturas:** [PENDIENTE]
+**(e) Capturas:**
 
-**(f) Hallazgos:** [PENDIENTE]
+![Figura 49. Política Rolling with additional batch, lote fijo de 1](capturas/2.4c-rollingbatch-configuracion.png)
+
+![Figura 50. v4-rollingbatch lista para desplegar](capturas/2.4c-rollingbatch-version-lista.png)
+
+![Figura 51. Inicio, lanzamiento del lote adicional y despliegue de la nueva versión](capturas/2.4c-rollingbatch-eventos-inicio.png)
+
+![Figura 52. Cuatro instancias durante el despliegue, incluida la temporal](capturas/2.4c-rollingbatch-instancia-adicional.png)
+
+![Figura 53. Instancias durante la actualización y respuestas 2XX del balanceador](capturas/2.4c-rollingbatch-instancias-durante.png)
+
+![Figura 54. Despliegue completado](capturas/2.4c-rollingbatch-despliegue-completado.png)
+
+![Figura 55. Las 3 instancias finales en Ok con v4-rollingbatch](capturas/2.4c-rollingbatch-estado-final.png)
+
+El registro completo del monitor está en `docs/despliegues/v4-rollingbatch.csv` y el detalle en
+`docs/despliegues/2.4c-rolling-with-additional-batch.md`.
+
+**(f) Hallazgos:**
+- **Capacidad adicional:** AWS lanzó una instancia temporal y el máximo simultáneo fue de 4. Esa
+  instancia no se retiró: se quedó como parte del grupo y AWS terminó una de las iniciales como
+  excedente, por lo que no quedaron exactamente los mismos IDs.
+- **Disponibilidad:** ninguna respuesta distinta de `200` entre las registradas.
+- **Convivencia de versiones:** las dos versiones respondieron durante 7 min 38 s.
+- **Duración:** 9 min 19 s, mayor que Rolling (8 min 10 s) porque primero crea, verifica y registra
+  el lote adicional.
+- **Salud del entorno:** pasó a *Warning* a las 11:46:27 porque el balanceador no marcó sana 1 de las
+  4 instancias, y volvió a *Info* un minuto después. Al terminar, pasó a *Degraded* a las 11:52:27
+  (3 instancias en línea por debajo del mínimo temporal de 4) y volvió a *Ok* a las 11:54:27, con el
+  grupo de Auto Scaling de nuevo en mínimo 3, deseadas 3 y máximo 6.
+- **Costo:** una instancia `t3.micro` adicional durante el despliegue; no se crea un entorno paralelo.
+- **Cuándo conviene:** cuando se quiere conservar capacidad durante la actualización y se acepta un
+  despliegue más largo y el costo temporal de una instancia adicional.
 
 ### 5.4 Immutable (`v5-immutable`)
 
 | Dato | Valor |
 |---|---|
 | Política | `Immutable` |
-| Versión anterior → nueva | [PENDIENTE] |
-| Fecha y hora de inicio | [PENDIENTE] |
-| (a) Instancias antes / máximo durante / después | [PENDIENTE] |
-| (c) Tiempo total | [PENDIENTE: __ min __ s] |
-| (d) Instancias iniciales o nuevas | [PENDIENTE: IDs antes y después] |
-| Solicitudes del monitor: total / no 200 | [PENDIENTE] |
-| Ventana con dos versiones respondiendo | [PENDIENTE] |
+| Versión anterior → nueva | `v4-rollingbatch` → `v5-immutable` |
+| Fecha y hora de inicio | 16 de octubre de 2026, 15:14:59 (UTC-5) |
+| (a) Instancias antes / máximo durante / después | 3 / 6 / 3: las 3 originales más un grupo temporal de 3 instancias nuevas (`t3.micro`); el máximo se mantuvo de 15:20:22 a 15:25:21 |
+| (c) Tiempo total | **16 min 53 s**: de "Environment update is starting" (15:14:59) a "Environment update completed successfully" (15:31:52) |
+| (d) Instancias iniciales o nuevas | **Nuevas**: las 3 instancias originales (`i-03d76ef45d72321de`, `i-05159b8ef3f935e9d` e `i-0f7acc80fdc24a7d3`) se reemplazaron por 3 nuevas (`i-03fe22026ed9d318f`, `i-0098c4e8e6a8c5e7a` e `i-035cd4a8c3e597263`) |
+| Solicitudes del monitor: total / no 200 | 1.189 / 0; 100 % de las solicitudes registradas (113 s sin muestrear, en 37 pausas de unos 4 s del equipo que ejecutó el monitor) |
+| Caída observada | Ninguna |
+| Ventana con dos versiones respondiendo | 13 min 14 s: de 15:16:48 a 15:30:02, con 325 cambios de versión entre solicitudes consecutivas |
 
-**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE]
+**(b) Cómo se validó que el despliegue estaba en ejecución:** el monitor consultó `/ping` cada segundo
+durante 21 min 41 s y registró 512 respuestas de `v4-rollingbatch` y 677 de `v5-immutable`. Los eventos
+del entorno muestran la creación del grupo temporal, la validación de salud de la primera instancia
+nueva, el lanzamiento de las otras dos, el traspaso al grupo permanente y el retiro de las originales.
+*Estado y supervisión* mostró al final las 3 instancias nuevas en *Ok* con `v5-immutable`, y un único
+grupo de Auto Scaling, sin grupo temporal. `/ping` respondió `{"version": "v5-immutable"}`.
 
-**(e) Capturas:** [PENDIENTE]
+**(e) Capturas:**
 
-**(f) Hallazgos:** [PENDIENTE]
+![Figura 56. Política Immutable seleccionada](capturas/2.4d-immutable-configuracion.png)
+
+![Figura 57. v5-immutable lista para desplegar](capturas/2.4d-immutable-version-lista.png)
+
+![Figura 58. Grupo temporal creado y primera instancia nueva en validación](capturas/2.4d-immutable-grupo-temporal.png)
+
+![Figura 59. Creación del grupo temporal y primer health check](capturas/2.4d-immutable-eventos-inicio.png)
+
+![Figura 60. Traspaso al grupo permanente y retiro de las instancias originales](capturas/2.4d-immutable-eventos-transicion.png)
+
+![Figura 61. Despliegue completado](capturas/2.4d-immutable-despliegue-completado.png)
+
+![Figura 62. Las 3 instancias nuevas finales en Ok con v5-immutable](capturas/2.4d-immutable-estado-final.png)
+
+El registro completo del monitor está en `docs/despliegues/v5-immutable.csv` y el detalle en
+`docs/despliegues/2.4d-immutable.md`.
+
+**(f) Hallazgos:**
+- **Capacidad:** llegó a 6 instancias simultáneas, 3 originales y 3 nuevas. La cuota de 32 vCPU alcanzó
+  de sobra para 6 `t3.micro` (12 vCPU).
+- **Disponibilidad:** ninguna respuesta distinta de `200` entre las registradas.
+- **Convivencia de versiones:** las dos versiones respondieron durante 13 min 14 s, la mayor de las
+  estrategias, mientras se validaba el grupo nuevo.
+- **Duración:** 16 min 53 s, la mayor de las cuatro, por la creación, validación, traspaso y
+  terminación de grupos e instancias.
+- **Reemplazo:** las 3 instancias originales se retiraron solo después de que las nuevas pasaron los
+  health checks y quedaron en el grupo permanente.
+- **Rollback:** es seguro antes del traspaso: basta terminar el grupo temporal y el grupo original
+  sigue intacto.
+- **Costo:** 3 instancias adicionales durante unos 10 minutos, el mayor costo temporal de las cuatro.
+- **Cuándo conviene:** cuando se priorizan la validación completa de la versión nueva y un rollback
+  rápido sobre la velocidad del despliegue.
 
 ### 5.5 Comparación de las estrategias
 
@@ -446,8 +520,18 @@ El registro completo del monitor está en `docs/despliegues/v3-rolling.csv` y el
 |---|---|---|---|---|
 | All at once | 0 min 21 s | 3 / 3 / 3 | Sí: 5 s, 5 respuestas `502` | Iniciales |
 | Rolling | 8 min 10 s | 3 / 3 / 3 | No: 0 respuestas no-200 (100 %) | Iniciales, por lotes |
-| Rolling with additional batch | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
-| Immutable | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] | [PENDIENTE] |
+| Rolling with additional batch | 9 min 19 s | 3 / 4 / 3 | No: 0 respuestas no-200 | Mixto: 1 nueva, 2 iniciales actualizadas y 1 inicial terminada |
+| Immutable | 16 min 53 s | 3 / 6 / 3 | No: 0 respuestas no-200 | Nuevas: las 3 originales reemplazadas |
+
+**Lectura de la comparación:**
+- **All at once** es la más rápida (21 s) y la única con caída total (5 s con respuestas `502`); las
+  otras tres no registraron respuestas distintas de `200`.
+- **Rolling** no usa instancias extra y mantiene el servicio, pero trabaja con 2 de 3 instancias
+  durante cada lote y toma 8 min 10 s.
+- **Rolling with additional batch** agrega una instancia temporal para no reducir la capacidad y toma
+  9 min 19 s, solo 1 min 9 s más que Rolling.
+- **Immutable** es la más lenta (16 min 53 s) y la de mayor costo temporal (6 instancias), pero valida
+  la versión en instancias nuevas antes de reemplazar las originales y permite un rollback seguro.
 
 ## 6. Pruebas del API
 
@@ -475,7 +559,7 @@ cambia `base_url`.
 | Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 tests aprobados, 0 errores, respuesta promedio de 129 ms |
 | IP del cliente detrás del balanceador | Entorno de Beanstalk | Con `v1`, la del balanceador; con `v1.1` y `PROXY_FIX_X_FOR = 2`, la del cliente (figura 1) |
 
-![Figura 49. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
+![Figura 63. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
 
 El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas/2.5-prueba-paquete-v1.md`
 (paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
@@ -490,9 +574,8 @@ equipo.*
 - Sin grupos de IAM: los permisos se asignan con los roles del proyecto y las personas se agregan por
   la página del equipo de la cuenta.
 - Algunas opciones de la consola muestran el aviso de "características avanzadas" y no se activan. Se
-  verificó que la política de despliegue *Rolling* se puede elegir sin ese aviso, y se aplicó con lote
-  fijo de 1. *All at once* es la política por defecto del entorno.
-  [PENDIENTE: confirmar si *Rolling with additional batch* e *Immutable* se aplican sin el aviso.]
+  verificó que las políticas de despliegue *Rolling*, *Rolling with additional batch* e *Immutable* se
+  pueden elegir y aplicar sin ese aviso. *All at once* es la política por defecto del entorno.
 - Para controlar el costo, el entorno solo está encendido mientras se trabaja: se encendió para el
   primer despliegue y sigue así durante las pruebas contra AWS y las estrategias, hasta grabar el
   video. Después se termina el entorno y se elimina la RDS con un snapshot final. La configuración
