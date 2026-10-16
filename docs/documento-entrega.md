@@ -21,6 +21,8 @@
 
 ## 1. Descripción del microservicio
 
+*Contexto de la verificación funcional (70 %): qué hace el servicio y su contrato.*
+
 El microservicio administra la lista negra global de emails de la organización. Los sistemas internos
 lo usan para agregar un email a la lista y para consultar si un email está en ella. Es un único
 servicio REST en Python con Flask, protegido con un token Bearer, que persiste la información en
@@ -42,6 +44,9 @@ El código está organizado por capas: `domain` (entidad, validación del email,
 minúsculas y sin espacios al guardar y al consultar.
 
 ## 2. Arquitectura del despliegue
+
+*Soporta la verificación funcional (70 %) y el punto 1 del documento: recursos de AWS y cómo se
+guarda la IP del cliente que pide el POST.*
 
 ```
 Cliente (Postman / sistemas internos)
@@ -83,6 +88,9 @@ dos registros:
 
 ## 3. Enlaces de la entrega
 
+*Soporta la verificación funcional (70 %): la aplicación en ejecución, el repositorio y la URL
+publicada de la documentación de Postman que pide el enunciado.*
+
 | Recurso | Enlace |
 |---|---|
 | Repositorio de GitHub | https://github.com/mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops |
@@ -101,7 +109,8 @@ con la misma URL si se cita a una sustentación síncrona.
 *Cubre el punto 1 del documento (10 %): a. configuración de RDS, b. configuración del proyecto en
 Beanstalk y c. configuración de los health checks.*
 
-La infraestructura se creó manualmente por la consola de AWS, sin servicios de CI/CD. Antes de crear
+La infraestructura se creó y se desplegó manualmente, con la consola de AWS y la AWS CLI, sin
+servicios de CI/CD. Antes de crear
 los recursos se verificó la cuenta, la región y la cuota de vCPU, que limita cuántas instancias
 pueden existir a la vez durante las estrategias que agregan instancias.
 
@@ -157,8 +166,8 @@ tablas las crea la aplicación al iniciar.
 ### 4.b Configuración del proyecto en AWS Beanstalk
 
 Antes del entorno se creó el grupo de seguridad de las instancias, `blacklist-app-sg`, sin reglas de
-entrada. Se conserva entre ventanas de trabajo para que la regla de la base siga vigente cada vez que
-se recrea el entorno.
+entrada. Se conserva aunque se termine el entorno, para que la regla de la base siga vigente cada vez
+que se recrea.
 
 ![Figura 17. Grupo de seguridad de las instancias](capturas/4-app-sg.png)
 
@@ -266,7 +275,7 @@ devuelve `/ping`, lo que permite ver qué instancias atienden la versión nueva 
 
 **Método de medición, común a las cuatro estrategias:**
 - Tiempo total: desde el evento de inicio del despliegue hasta el evento de finalización en la pestaña
-  *Events* del entorno.
+  *Eventos* del entorno.
 - Instancias: lista de instancias del entorno en EC2 antes, durante y después del despliegue.
 - Disponibilidad: el monitor del repositorio (`scripts/monitor_disponibilidad.py`) consulta `/ping`
   cada segundo durante todo el despliegue y registra la hora, el código HTTP, la versión y la latencia
@@ -287,11 +296,11 @@ devuelve `/ping`, lo que permite ver qué instancias atienden la versión nueva 
 | (d) Instancias iniciales o nuevas | [PENDIENTE: IDs antes y después] |
 | Solicitudes del monitor: total / no 200 | [PENDIENTE] |
 
-**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE: eventos, pestaña *Health* y
-monitor de `/ping`.]
+**(b) Cómo se validó que el despliegue estaba en ejecución:** [PENDIENTE: eventos, pestaña *Estado y
+supervisión* y monitor de `/ping`.]
 
-**(e) Capturas:** [PENDIENTE: política de despliegue, eventos de inicio y fin, *Health* durante el
-despliegue, instancias EC2 antes y después, resumen del monitor.]
+**(e) Capturas:** [PENDIENTE: política de despliegue, eventos de inicio y fin, *Estado y supervisión*
+durante el despliegue, instancias EC2 antes y después, resumen del monitor.]
 
 **(f) Hallazgos:** [PENDIENTE: disponibilidad, capacidad durante el despliegue, duración comparada,
 costo, riesgo y *rollback*, cuándo se recomienda.]
@@ -364,6 +373,9 @@ costo, riesgo y *rollback*, cuándo se recomienda.]
 
 ## 6. Pruebas del API
 
+*Soporta la verificación funcional (70 %): POST /blacklists (45 %) y GET /blacklists/<email> (25 %),
+probados con Postman contra la aplicación desplegada.*
+
 La colección de Postman `Blacklist API – Lista negra global` tiene 11 escenarios con 2 tests cada uno.
 Cubren el POST válido, el POST sin motivo, el duplicado (409), el email con formato inválido, el
 `app_uuid` que no es UUID y el motivo de más de 255 caracteres (400), la falta de token (401), la
@@ -391,6 +403,9 @@ El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas
 (paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
 
 ## 7. Limitaciones y decisiones
+
+*Complementa los puntos 1 y 2 del documento: restricciones del plan gratuito y decisiones técnicas del
+equipo.*
 
 **Plan gratuito de AWS.** La cuenta del equipo usa el plan gratuito, que impone restricciones:
 - Una sola región: todo el despliegue está en `us-east-2` (Ohio).
@@ -442,6 +457,8 @@ vacía se usa `development`. En el entorno de Beanstalk vale `production`. `PROX
 entero mayor o igual a 1; otro valor detiene el arranque con un mensaje claro.
 
 ## 8. Conclusiones
+
+*Cierra el punto 2 del documento (20 %) con la comparación de las estrategias.*
 
 [PENDIENTE: conclusiones a partir de los resultados de las estrategias y de las pruebas contra AWS.
 Puntos a cubrir: estrategia recomendada para este servicio y por qué, compromiso entre tiempo,
