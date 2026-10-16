@@ -510,7 +510,7 @@ El registro completo del monitor está en `docs/despliegues/v5-immutable.csv` y 
   health checks y quedaron en el grupo permanente.
 - **Rollback:** es seguro antes del traspaso: basta terminar el grupo temporal y el grupo original
   sigue intacto.
-- **Costo:** 3 instancias adicionales durante unos 10 minutos, el mayor costo temporal de las cuatro.
+- **Costo:** hubo más de 3 instancias durante 14 min (de 15:17:22 a 15:31:21) y las 6 simultáneas durante 4 min 59 s (de 15:20:22 a 15:25:21): el mayor costo temporal de las cuatro.
 - **Cuándo conviene:** cuando se priorizan la validación completa de la versión nueva y un rollback
   rápido sobre la velocidad del despliegue.
 
