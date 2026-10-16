@@ -94,7 +94,7 @@ Durante las estrategias de despliegue, consulta `/ping` cada segundo y guarda ca
 ```bash
 python scripts/monitor_disponibilidad.py http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com docs/despliegues/<estrategia>.csv
 ```
-Se inicia antes de desplegar y se detiene con Ctrl+C cuando el entorno vuelve a *Ok*. Al detenerse imprime el resumen: solicitudes, respuestas no-200 y disponibilidad, la mayor racha de no-200 (caída), las versiones observadas con su primera y última respuesta, y la ventana en la que respondieron dos versiones. Las horas están en UTC; la consola de AWS muestra UTC-5. Opciones: `--intervalo` (segundos entre solicitudes), `--tiempo-espera` y `--solicitudes` (se detiene solo después de N solicitudes).
+Se inicia antes de desplegar y se detiene con Ctrl+C cuando el entorno vuelve a *Ok*. Al detenerse imprime el resumen: solicitudes, respuestas no-200 y disponibilidad, la mayor caída (desde la primera respuesta no-200 hasta la siguiente respuesta 200; un corte de conexión cuenta como no-200), las versiones observadas con su primera y última respuesta, y la ventana en la que respondieron dos versiones. Las horas están en UTC; la consola de AWS muestra UTC-5. Opciones: `--intervalo` (segundos entre solicitudes), `--tiempo-espera` y `--solicitudes` (se detiene solo después de N solicitudes).
 
 ## Problemas conocidos en Windows
 Si el control de aplicaciones bloquea una extensión compilada (error `DLL load failed`), por ejemplo la de SQLAlchemy, instálala sin compilar:

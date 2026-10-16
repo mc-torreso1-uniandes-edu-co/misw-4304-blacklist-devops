@@ -1,5 +1,6 @@
 import argparse
 import csv
+import http.client
 import json
 import sys
 import time
@@ -69,15 +70,21 @@ class VersionObservada:
 
 
 @dataclass(frozen=True)
+class Caida:
+    solicitudes: int
+    inicio: datetime
+    ultima_falla: datetime
+    recuperacion: Optional[datetime]
+
+
+@dataclass(frozen=True)
 class Resumen:
     total: int
     exitosas: int
     inicio: Optional[datetime] = None
     fin: Optional[datetime] = None
     versiones: Dict[str, VersionObservada] = field(default_factory=dict)
-    racha_fallas: int = 0
-    racha_inicio: Optional[datetime] = None
-    racha_fin: Optional[datetime] = None
+    caida: Optional[Caida] = None
     convivencia_inicio: Optional[datetime] = None
     convivencia_fin: Optional[datetime] = None
 
@@ -128,7 +135,7 @@ def consultar_ping(
         codigo = falla.code
         error = f"HTTP {falla.code}"
         falla.close()
-    except (urllib.error.URLError, OSError) as falla:
+    except (OSError, http.client.HTTPException) as falla:
         codigo = CODIGO_SIN_RESPUESTA
         motivo = getattr(falla, "reason", falla)
         error = f"{type(falla).__name__}: {motivo}"
@@ -182,18 +189,21 @@ def monitorear(
     return registros
 
 
-def calcular_racha_fallas(registros: List[Registro]):
-    mayor, inicio_mayor, fin_mayor = 0, None, None
-    actual, inicio_actual = 0, None
+def calcular_mayor_caida(registros: List[Registro]) -> Optional[Caida]:
+    caidas: List[Caida] = []
+    cantidad, inicio, ultima = 0, None, None
     for registro in registros:
         if registro.exitoso:
-            actual, inicio_actual = 0, None
+            if cantidad:
+                caidas.append(Caida(cantidad, inicio, ultima, registro.marca_tiempo))
+                cantidad, inicio, ultima = 0, None, None
             continue
-        actual += 1
-        inicio_actual = inicio_actual or registro.marca_tiempo
-        if actual > mayor:
-            mayor, inicio_mayor, fin_mayor = actual, inicio_actual, registro.marca_tiempo
-    return mayor, inicio_mayor, fin_mayor
+        cantidad += 1
+        inicio = inicio or registro.marca_tiempo
+        ultima = registro.marca_tiempo
+    if cantidad:
+        caidas.append(Caida(cantidad, inicio, ultima, None))
+    return max(caidas, key=lambda caida: caida.solicitudes, default=None)
 
 
 def agrupar_versiones(registros: List[Registro]) -> Dict[str, VersionObservada]:
@@ -224,7 +234,6 @@ def resumir(registros: List[Registro]) -> Resumen:
     if not registros:
         return Resumen(total=0, exitosas=0)
     versiones = agrupar_versiones(registros)
-    racha, racha_inicio, racha_fin = calcular_racha_fallas(registros)
     convivencia_inicio, convivencia_fin = calcular_convivencia(versiones)
     return Resumen(
         total=len(registros),
@@ -232,9 +241,7 @@ def resumir(registros: List[Registro]) -> Resumen:
         inicio=registros[0].marca_tiempo,
         fin=registros[-1].marca_tiempo,
         versiones=versiones,
-        racha_fallas=racha,
-        racha_inicio=racha_inicio,
-        racha_fin=racha_fin,
+        caida=calcular_mayor_caida(registros),
         convivencia_inicio=convivencia_inicio,
         convivencia_fin=convivencia_fin,
     )
@@ -254,14 +261,20 @@ def formatear_resumen(resumen: Resumen) -> str:
         f"Solicitudes: {resumen.total}; respuestas 200: {resumen.exitosas}; no-200: {resumen.fallidas}; "
         f"disponibilidad: {resumen.disponibilidad:.2f} %",
     ]
-    if resumen.racha_fallas:
+    caida = resumen.caida
+    if caida is None:
+        lineas.append("Sin respuestas no-200.")
+    elif caida.recuperacion is None:
         lineas.append(
-            f"Mayor racha de no-200: {resumen.racha_fallas} solicitudes seguidas, de "
-            f"{formatear_marca(resumen.racha_inicio)} a {formatear_marca(resumen.racha_fin)} "
-            f"({segundos_entre(resumen.racha_inicio, resumen.racha_fin):.0f} s)"
+            f"Mayor caída: {caida.solicitudes} solicitudes no-200 seguidas desde {formatear_marca(caida.inicio)}; "
+            f"al detener el monitor no había vuelto a responder 200 (última falla: {formatear_marca(caida.ultima_falla)})"
         )
     else:
-        lineas.append("Sin respuestas no-200.")
+        lineas.append(
+            f"Mayor caída: {caida.solicitudes} solicitudes no-200 seguidas, desde {formatear_marca(caida.inicio)} "
+            f"hasta la siguiente respuesta 200 a las {formatear_marca(caida.recuperacion)} "
+            f"({segundos_entre(caida.inicio, caida.recuperacion):.0f} s)"
+        )
     lineas.append("Versiones observadas:")
     for version, observada in sorted(resumen.versiones.items(), key=lambda item: item[1].primera):
         lineas.append(

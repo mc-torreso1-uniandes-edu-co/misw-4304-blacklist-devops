@@ -1,4 +1,5 @@
 import csv
+import http.client
 import io
 import urllib.error
 from datetime import datetime, timedelta, timezone
@@ -76,6 +77,9 @@ def test_consulta_con_error_http_registra_el_codigo():
     [
         (urllib.error.URLError("connection refused"), "URLError: connection refused"),
         (TimeoutError("timed out"), "TimeoutError: timed out"),
+        (http.client.IncompleteRead(b'{"vers'), "IncompleteRead: IncompleteRead(6 bytes read)"),
+        (http.client.BadStatusLine("HTTP/1.1 ???"), "BadStatusLine: HTTP/1.1 ???"),
+        (http.client.RemoteDisconnected("Remote end closed connection"), "RemoteDisconnected: Remote end closed connection"),
     ],
 )
 def test_consulta_sin_respuesta_registra_codigo_cero(falla, texto):
@@ -144,7 +148,7 @@ def test_resumen_sin_fallas_ni_convivencia():
     assert resumen.total == 3
     assert resumen.fallidas == 0
     assert resumen.disponibilidad == 100.0
-    assert resumen.racha_fallas == 0
+    assert resumen.caida is None
     assert resumen.convivencia_inicio is None
     assert resumen.versiones[VERSION_ANTERIOR].cantidad == 3
 
@@ -168,7 +172,7 @@ def test_resumen_con_caida_y_convivencia_de_versiones():
     assert resumen.exitosas == 6
     assert resumen.fallidas == 4
     assert resumen.disponibilidad == pytest.approx(60.0)
-    assert (resumen.racha_fallas, resumen.racha_inicio, resumen.racha_fin) == (3, marca(1), marca(3))
+    assert resumen.caida == monitor.Caida(3, marca(1), marca(3), marca(4))
     assert (resumen.convivencia_inicio, resumen.convivencia_fin) == (marca(6), marca(7))
     assert resumen.versiones[VERSION_NUEVA].primera == marca(6)
     assert resumen.versiones[VERSION_ANTERIOR].ultima == marca(7)
@@ -179,6 +183,23 @@ def test_sin_convivencia_si_la_version_nueva_aparece_despues_de_la_anterior():
 
     assert resumen.convivencia_inicio is None
     assert set(resumen.versiones) == {VERSION_ANTERIOR, VERSION_NUEVA}
+
+
+def test_caida_sin_recuperar_al_detener_el_monitor():
+    registros = [registro(0), registro(1, codigo=502), registro(2), registro(3, codigo=503), registro(4, codigo=0)]
+
+    resumen = monitor.resumir(registros)
+    texto = monitor.formatear_resumen(resumen)
+
+    assert resumen.caida == monitor.Caida(2, marca(3), marca(4), None)
+    assert "Mayor caída: 2 solicitudes no-200 seguidas desde 2026-10-16T14:00:03.000Z" in texto
+    assert "no había vuelto a responder 200 (última falla: 2026-10-16T14:00:04.000Z)" in texto
+
+
+def test_con_caidas_del_mismo_largo_informa_la_primera():
+    resumen = monitor.resumir([registro(0, codigo=503), registro(1), registro(2, codigo=503), registro(3)])
+
+    assert resumen.caida == monitor.Caida(1, marca(0), marca(0), marca(1))
 
 
 def test_resumen_vacio():
@@ -195,7 +216,10 @@ def test_texto_del_resumen_incluye_caida_versiones_y_convivencia():
     )
 
     assert "Solicitudes: 4; respuestas 200: 3; no-200: 1; disponibilidad: 75.00 %" in texto
-    assert "Mayor racha de no-200: 1 solicitudes seguidas" in texto
+    assert (
+        "Mayor caída: 1 solicitudes no-200 seguidas, desde 2026-10-16T14:00:01.000Z "
+        "hasta la siguiente respuesta 200 a las 2026-10-16T14:00:02.000Z (1 s)"
+    ) in texto
     assert f"  {VERSION_ANTERIOR}: 2 respuestas" in texto
     assert f"  {VERSION_NUEVA}: 1 respuestas" in texto
     assert "Convivencia de versiones: de 2026-10-16T14:00:02.000Z a 2026-10-16T14:00:03.000Z (1 s)" in texto
