@@ -21,8 +21,6 @@
 
 ## 1. Descripción del microservicio
 
-*Contexto de la verificación funcional (70 %): qué hace el servicio y su contrato.*
-
 El microservicio administra la lista negra global de emails de la organización. Los sistemas internos
 lo usan para agregar un email a la lista y para consultar si un email está en ella. Es un único
 servicio REST en Python con Flask, protegido con un token Bearer, que persiste la información en
@@ -44,9 +42,6 @@ El código está organizado por capas: `domain` (entidad, validación del email,
 minúsculas y sin espacios al guardar y al consultar.
 
 ## 2. Arquitectura del despliegue
-
-*Soporta la verificación funcional (70 %) y el punto 1 del documento: recursos de AWS y cómo se
-guarda la IP del cliente que pide el POST.*
 
 ```
 Cliente (Postman / sistemas internos)
@@ -88,9 +83,6 @@ dos registros:
 
 ## 3. Enlaces de la entrega
 
-*Soporta la verificación funcional (70 %): la aplicación en ejecución, el repositorio y la URL
-publicada de la documentación de Postman que pide el enunciado.*
-
 | Recurso | Enlace |
 |---|---|
 | Repositorio de GitHub | https://github.com/mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops |
@@ -106,8 +98,8 @@ con la misma URL si se cita a una sustentación síncrona.
 
 ## 4. Paso a paso de la creación y el despliegue en AWS Elastic Beanstalk
 
-*Cubre el punto 1 del documento (10 %): a. configuración de RDS, b. configuración del proyecto en
-Beanstalk y c. configuración de los health checks.*
+Cubre el punto 1 del documento (10 %): a. configuración de RDS, b. configuración del proyecto en
+Beanstalk y c. configuración de los health checks.
 
 La infraestructura se creó y se desplegó manualmente, con la consola de AWS y la AWS CLI, sin
 servicios de CI/CD. Antes de crear
@@ -265,8 +257,8 @@ las 3 instancias, que reciben las comprobaciones del balanceador y las solicitud
 
 ## 5. Estrategias de despliegue
 
-*Cubre el punto 2 del documento (20 %): cuatro estrategias con más de una instancia, cada una con los
-puntos a–f.*
+Cubre el punto 2 del documento (20 %): cuatro estrategias con más de una instancia, cada una con los
+puntos a–f.
 
 Las estrategias se ejecutaron sobre el mismo entorno, con Auto Scaling de mínimo 3 y máximo 6
 instancias, en este orden: All at once (`v2-allatonce`), Rolling (`v3-rolling`), Rolling with
@@ -535,9 +527,6 @@ El registro completo del monitor está en `docs/despliegues/v5-immutable.csv` y 
 
 ## 6. Pruebas del API
 
-*Soporta la verificación funcional (70 %): POST /blacklists (45 %) y GET /blacklists/<email> (25 %),
-probados con Postman contra la aplicación desplegada.*
-
 La colección de Postman `Blacklist API – Lista negra global` tiene 11 escenarios con 2 tests cada uno.
 Cubren el POST válido, el POST sin motivo, el duplicado (409), el email con formato inválido, el
 `app_uuid` que no es UUID y el motivo de más de 255 caracteres (400), la falta de token (401), la
@@ -565,9 +554,6 @@ El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas
 (paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
 
 ## 7. Limitaciones y decisiones
-
-*Complementa los puntos 1 y 2 del documento: restricciones del plan gratuito y decisiones técnicas del
-equipo.*
 
 **Plan gratuito de AWS.** La cuenta del equipo usa el plan gratuito, que impone restricciones:
 - Una sola región: todo el despliegue está en `us-east-2` (Ohio).
@@ -619,8 +605,6 @@ vacía se usa `development`. En el entorno de Beanstalk vale `production`. `PROX
 entero mayor o igual a 1; otro valor detiene el arranque con un mensaje claro.
 
 ## 8. Conclusiones
-
-*Cierra el punto 2 del documento (20 %) con la comparación de las estrategias.*
 
 **Resultado.** El microservicio de lista negra quedó desplegado de forma manual en AWS Elastic Beanstalk,
 con PostgreSQL en Amazon RDS, y responde POST, GET y `/ping` con el token estático. La colección de
