@@ -103,7 +103,8 @@ Notas aclaratorias:
   tanto, el funcionamiento del API se ve en el video y en las secciones 4 a 6.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
-- **Video.** Está en el OneDrive de la Universidad, compartido con cualquiera que tenga el enlace.
+- **Video.** Está en una carpeta compartida de Teams de la Universidad, con acceso para las personas de
+  la Universidad de los Andes.
 
 ## 4. Paso a paso de la creación y el despliegue en AWS Elastic Beanstalk
 
