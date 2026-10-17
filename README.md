@@ -1,6 +1,44 @@
 # Microservicio de Lista Negra Global de Emails
 Proyecto de DevOps - MISW - 202615. Grupo Blacklist DevOps
 
+Microservicio REST en Python y Flask para que los sistemas internos de una empresa agreguen emails a una lista negra global y consulten si un email está en ella. Se despliega de forma manual, sin CI/CD, en AWS Elastic Beanstalk con PostgreSQL en Amazon RDS (región `us-east-2`).
+
+## Enlaces
+| Recurso | Enlace |
+|---|---|
+| Documentación del API (Postman) | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
+| Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
+| Entorno en AWS | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com (se enciende solo mientras se trabaja; `/ping` indica si responde) |
+
+## Stack
+| Componente | Versión |
+|---|---|
+| Python | 3.13.16 |
+| Flask / Werkzeug | 3.1.3 / 3.1.9 |
+| Flask-SQLAlchemy / SQLAlchemy | 3.1.1 / 2.1.4 |
+| Flask-RESTful | 0.3.10 |
+| Flask-Marshmallow / marshmallow | 1.5.0 / 4.3.1 |
+| Flask-JWT-Extended | 4.7.4 |
+| PostgreSQL (driver `psycopg`) | 16 (3.3.6) |
+| Gunicorn | 26.2.0 |
+
+## Estructura del repositorio
+```
+application.py        # expone `application` (WSGI), el nombre que espera Beanstalk
+app/                  # el microservicio, por capas
+  domain/             #   entidad, validación del email, errores y reloj
+  application/        #   casos de uso (agregar y consultar) y puerto del repositorio
+  infrastructure/     #   http (rutas, recursos, esquema y autenticación) y persistence (SQLAlchemy)
+scripts/              # generar_token.py, empaquetar.py y monitor_disponibilidad.py
+tests/                # pytest
+postman/              # colección y environments (JSON v2.1)
+docs/                 # enunciado y aclaraciones del curso, despliegues/ (mediciones) y pruebas/
+.ebextensions/        # configuración de Beanstalk (health check en /ping)
+.github/              # chequeos de las ramas
+Procfile              # web: gunicorn --bind :8000 --workers 2 application:application
+VERSION               # etiqueta de versión que devuelve /ping (el empaquetado la escribe)
+```
+
 ## Requisitos
 - Python 3.13.16 (la versión de `.python-version`). Se instala desde python.org o con `uv python install 3.13.16`
 - PostgreSQL (o SQLite para pruebas locales)
@@ -66,7 +104,7 @@ Los de `/blacklists` requieren el encabezado `Authorization: Bearer <token>`. `/
 | POST | `/blacklists` | 201 con `msg` e `id`, 400 con `msg` y `errors`, 401 con `msg`, 409 con `msg` si el email ya está |
 | GET | `/blacklists/<email>` | 200 con `is_blacklisted` y `blocked_reason`, 401 con `msg` |
 
-El email se normaliza a minúsculas y sin espacios al guardar y al consultar.
+El email se normaliza a minúsculas y sin espacios al guardar y al consultar. El POST guarda además la IP de origen y la fecha y hora de la solicitud.
 
 Cuerpo del POST:
 ```json
@@ -87,7 +125,33 @@ python -m pytest --cov=app
 Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
 
 ## Postman
-La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` en el environment y ejecuta los escenarios en orden. `base_url` ya apunta a `http://localhost:5000` (local) y a `http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com` (AWS). El token se carga solo como valor actual, nunca como valor inicial: el workspace es público.
+La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` en el environment y ejecuta los escenarios en orden. `base_url` ya apunta a `http://localhost:5000` (local) y a `http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com` (AWS). El token se carga solo como valor actual, nunca como valor inicial: el workspace es público. Los resultados contra AWS están en `docs/pruebas/2.3b-pruebas-aws.md`.
+
+## Empaquetar y desplegar en AWS
+El despliegue es manual. Para generar un paquete:
+```bash
+python scripts/empaquetar.py <etiqueta>   # por ejemplo v1.1
+```
+Ejecuta las pruebas y genera `dist/app-<etiqueta>.zip` con `application.py`, `app/`, `requirements.txt`, `Procfile` y `.ebextensions/`. La etiqueta se escribe en el archivo `VERSION` dentro del paquete, y es la que devuelve `/ping`. Con `--omitir-pruebas` genera el paquete sin ejecutarlas.
+
+El `.zip` se carga como versión de la aplicación en Elastic Beanstalk y se despliega desde la consola, o con la AWS CLI:
+```bash
+aws elasticbeanstalk update-environment --environment-name Blacklist-devops-env --version-label <etiqueta> --region us-east-2
+```
+
+Propiedades del entorno (nunca van en el repositorio): `DATABASE_URL`, `JWT_SECRET_KEY`, `APP_ENV=production` y `PROXY_FIX_X_FOR=2`. En Beanstalk la solicitud pasa por el balanceador y por el nginx de la instancia, por eso son dos saltos. El balanceador comprueba cada instancia con `GET /ping`.
+
+El procedimiento para crear y recrear el entorno está en `docs/despliegues/1.7-infraestructura-reproducible.md`.
+
+## Estrategias de despliegue
+Las cuatro estrategias se ejecutaron sobre el mismo entorno, con Auto Scaling de 3 a 6 instancias `t3.micro`. Cada paquete tiene el mismo código y solo cambia `VERSION`.
+
+| Estrategia | Versión | Tiempo | Instancias (antes / máx. / después) | Caída observada | Detalle |
+|---|---|---|---|---|---|
+| All at once | `v2-allatonce` | 0 min 21 s | 3 / 3 / 3 | 5 s con respuestas `502` | `docs/despliegues/2.4a-all-at-once.md` |
+| Rolling | `v3-rolling` | 8 min 10 s | 3 / 3 / 3 | Ninguna | `docs/despliegues/2.4b-rolling.md` |
+| Rolling with additional batch | `v4-rollingbatch` | 9 min 19 s | 3 / 4 / 3 | Ninguna | `docs/despliegues/2.4c-rolling-with-additional-batch.md` |
+| Immutable | `v5-immutable` | 16 min 53 s | 3 / 6 / 3 | Ninguna | `docs/despliegues/2.4d-immutable.md` |
 
 ## Monitor de disponibilidad
 Durante las estrategias de despliegue, consulta `/ping` cada segundo y guarda cada respuesta en un CSV (hora UTC, código HTTP, versión, latencia y error). No necesita token ni dependencias adicionales:
@@ -96,6 +160,12 @@ python scripts/monitor_disponibilidad.py http://blacklist-devops-misw.us-east-2.
 ```
 Se inicia antes de desplegar y se detiene con Ctrl+C cuando el entorno vuelve a *Ok*. Al detenerse imprime el resumen: solicitudes, respuestas no-200 y disponibilidad, la mayor caída (desde la primera respuesta no-200 hasta la siguiente respuesta 200; un corte de conexión cuenta como no-200), las versiones observadas con su primera y última respuesta, y la ventana en la que respondieron dos versiones. Las horas están en UTC; la consola de AWS muestra UTC-5. Opciones: `--intervalo` (segundos entre solicitudes), `--tiempo-espera` y `--solicitudes` (se detiene solo después de N solicitudes).
 
+## Flujo de trabajo en Git
+Hay dos ramas protegidas: `main` (estable) y `dev` (integración). Nadie hace commit directo a ninguna.
+- Los cambios salen de una rama de trabajo creada desde `dev` (con prefijo como `feature/`, `fix/` o `docs/`) y entran por un PR hacia `dev`, con una aprobación y fusión con *squash*. Un chequeo (`no-desde-main`) impide PR desde `main`.
+- `dev` se promueve a `main` con un PR y *merge commit*. Un chequeo (`solo-desde-dev`) impide que `main` reciba PR de otras ramas.
+- Los paquetes que se despliegan salen de `main`.
+
 ## Problemas conocidos en Windows
 Si el control de aplicaciones bloquea una extensión compilada (error `DLL load failed`), por ejemplo la de SQLAlchemy, instálala sin compilar:
 ```powershell
@@ -103,3 +173,6 @@ $env:DISABLE_SQLALCHEMY_CEXT = "1"
 pip install --force-reinstall --no-deps --no-binary sqlalchemy SQLAlchemy==2.1.4
 ```
 La DLL de `psycopg-binary` también puede bloquearse; en ese caso, las pruebas contra PostgreSQL se hacen en Docker o WSL.
+
+## Equipo
+Marcelo César Torres, Héctor José Melgarejo, Juan Sebastián Páez y Jean Pierre Betancourt.
