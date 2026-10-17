@@ -176,3 +176,6 @@ La DLL de `psycopg-binary` también puede bloquearse; en ese caso, las pruebas c
 
 ## Equipo
 Marcelo César Torres, Héctor José Melgarejo, Juan Sebastián Páez y Jean Pierre Betancourt.
+
+
+
