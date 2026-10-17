@@ -91,10 +91,19 @@ dos registros:
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
 | Video de sustentación | [PENDIENTE: enlace del video] |
 
-Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido durante el
-trabajo y la grabación del video: se encendió el 15 de octubre de 2026 para el primer despliegue y se
-apaga después de grabar. La configuración guardada y las versiones cargadas permiten volver a proveerlo
-con la misma URL si se cita a una sustentación síncrona.
+Notas aclaratorias:
+
+- **Repositorio.** Es privado. Si el tutor necesita acceso, debe suministrar su usuario de GitHub para
+  agregarlo como colaborador.
+- **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
+  mientras se trabaja y se graba el video: se encendió el 15 de octubre de 2026 y se apaga después de
+  grabar, así que la URL puede no responder durante la calificación. Si el tutor cita a una
+  sustentación síncrona, el equipo vuelve a provisionar el ambiente en unos 20 minutos, con la misma
+  URL, a partir de la configuración guardada, el snapshot de la base y las versiones cargadas. Mientras
+  tanto, el funcionamiento del API se ve en el video y en las secciones 4 a 6.
+- **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
+  ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
+- **Video.** Está en el OneDrive de la Universidad, compartido con cualquiera que tenga el enlace.
 
 ## 4. Paso a paso de la creación y el despliegue en AWS Elastic Beanstalk
 
@@ -211,7 +220,7 @@ Al recrear el entorno desde la consola, el formulario propone el rol de servicio
 `aws-elasticbeanstalk-service-role` en lugar de `blacklist-eb-service-rol`, y la creación falla
 porque la configuración guardada usa este último para las actualizaciones administradas. El entorno se
 creó con la AWS CLI desde `blacklist-base`, que conserva los roles de la plantilla. El procedimiento
-quedó en `docs/despliegues/1.7-infraestructura-reproducible.md`.
+quedó documentado en la carpeta `docs/despliegues/` del repositorio.
 
 **Versión `v1.1`.** La verificación en AWS mostró que `v1` guardaba la IP del balanceador (sección 2).
 Se generó `v1.1` desde `main`, que ya leía `PROXY_FIX_X_FOR`, y se desplegó junto con la propiedad
@@ -318,8 +327,8 @@ implementación 3. Y `/ping` respondió `{"version": "v2-allatonce"}` al termina
 
 ![Figura 40. /ping responde v2-allatonce](capturas/2.4a-ping.png)
 
-El registro completo del monitor está en `docs/despliegues/v2-allatonce.csv` y el detalle en
-`docs/despliegues/2.4a-all-at-once.md`.
+El registro completo del monitor está en `docs/despliegues/v2-allatonce.csv` y el detalle de la
+estrategia, en la misma carpeta.
 
 **(f) Hallazgos:**
 - **Disponibilidad:** hubo una caída total de 5 s (5 solicitudes seguidas con `502`) entre la última
@@ -374,8 +383,8 @@ supervisión* mostró al final las 3 instancias en *Ok* con la implementación 4
 
 ![Figura 48. /ping responde v3-rolling](capturas/2.4b-rolling-ping-final-recorte.png)
 
-El registro completo del monitor está en `docs/despliegues/v3-rolling.csv` y el detalle en
-`docs/despliegues/2.4b-rolling.md`.
+El registro completo del monitor está en `docs/despliegues/v3-rolling.csv` y el detalle de la
+estrategia, en la misma carpeta.
 
 **(f) Hallazgos:**
 - **Disponibilidad:** no hubo respuestas distintas de `200`: el balanceador solo envió solicitudes a las
@@ -431,8 +440,8 @@ supervisión* mostró al final las 3 finales en *Ok* con `v4-rollingbatch`.
 
 ![Figura 55. Las 3 instancias finales en Ok con v4-rollingbatch](capturas/2.4c-rollingbatch-estado-final.png)
 
-El registro completo del monitor está en `docs/despliegues/v4-rollingbatch.csv` y el detalle en
-`docs/despliegues/2.4c-rolling-with-additional-batch.md`.
+El registro completo del monitor está en `docs/despliegues/v4-rollingbatch.csv` y el detalle de la
+estrategia, en la misma carpeta.
 
 **(f) Hallazgos:**
 - **Capacidad adicional:** AWS lanzó una instancia temporal y el máximo simultáneo fue de 4. Esa
@@ -487,8 +496,8 @@ grupo de Auto Scaling, sin grupo temporal. `/ping` respondió `{"version": "v5-i
 
 ![Figura 62. Las 3 instancias nuevas finales en Ok con v5-immutable](capturas/2.4d-immutable-estado-final.png)
 
-El registro completo del monitor está en `docs/despliegues/v5-immutable.csv` y el detalle en
-`docs/despliegues/2.4d-immutable.md`.
+El registro completo del monitor está en `docs/despliegues/v5-immutable.csv` y el detalle de la
+estrategia, en la misma carpeta.
 
 **(f) Hallazgos:**
 - **Capacidad:** llegó a 6 instancias simultáneas, 3 originales y 3 nuevas. La cuota de 32 vCPU alcanzó
@@ -550,8 +559,8 @@ cambia `base_url`.
 
 ![Figura 63. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
 
-El detalle está en `docs/pruebas/2.3-pruebas-locales.md` (local), `docs/pruebas/2.5-prueba-paquete-v1.md`
-(paquete) y `docs/pruebas/2.3b-pruebas-aws.md` (AWS).
+El detalle de las pruebas locales, de los paquetes y de las pruebas contra AWS está en la carpeta
+`docs/pruebas/` del repositorio.
 
 ## 7. Limitaciones y decisiones
 
