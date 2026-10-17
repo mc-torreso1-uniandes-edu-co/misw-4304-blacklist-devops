@@ -536,7 +536,7 @@ estrategia, en la misma carpeta.
 
 ## 6. Pruebas del API
 
-La colección de Postman `Blacklist API – Lista negra global` tiene 11 escenarios con 2 tests cada uno.
+La colección de Postman `Blacklist API – Lista negra global` tiene 11 escenarios con 2 pruebas cada una.
 Cubren el POST válido, el POST sin motivo, el duplicado (409), el email con formato inválido, el
 `app_uuid` que no es UUID y el motivo de más de 255 caracteres (400), la falta de token (401), la
 consulta de un email que está y de uno que no está, y el health check. Cada endpoint está documentado
@@ -547,17 +547,17 @@ cambia `base_url`.
 | Prueba | Entorno | Resultado |
 |---|---|---|
 | Pruebas automáticas (pytest) | SQLite en memoria | 85 pruebas aprobadas (60 de la aplicación y 25 del monitor de disponibilidad), cobertura del 100 % de `app/` |
-| Colección de Postman | Aplicación local con SQLite | 22 de 22 tests aprobados |
-| Colección de Postman | Gunicorn y PostgreSQL en contenedores | 22 de 22 tests aprobados |
+| Colección de Postman | Aplicación local con SQLite | 22 de 22 pruebas aprobadas |
+| Colección de Postman | Gunicorn y PostgreSQL en contenedores | 22 de 22 pruebas aprobadas |
 | IP del cliente con `X-Forwarded-For` | Gunicorn y PostgreSQL en contenedores | Se guarda la IP del cliente enviada en el encabezado |
 | Persistencia después de reiniciar | Gunicorn y PostgreSQL en contenedores | Los registros se conservan y el GET responde 200 |
 | Paquete `v1` antes de cargarlo | Carpeta limpia, Gunicorn en contenedor | Paquete verificado y cargado con el mismo SHA-256 |
 | Paquetes `v2-allatonce` a `v5-immutable` antes de cargarlos | Carpeta limpia, Gunicorn en contenedor | `/ping` con su etiqueta, POST 201, GET 200 y 401 sin token en los cuatro |
 | POST y GET | Entorno de Beanstalk con `v1.1` | 201 y 200 contra RDS (figuras 28 y 29) |
-| Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 tests aprobados, 0 errores, respuesta promedio de 129 ms |
+| Colección de Postman | Entorno de Beanstalk con `v1.1` | 22 de 22 pruebas aprobadas, 0 errores, respuesta promedio de 129 ms |
 | IP del cliente detrás del balanceador | Entorno de Beanstalk | Con `v1`, la del balanceador; con `v1.1` y `PROXY_FIX_X_FOR = 2`, la del cliente (figura 1) |
 
-![Figura 63. Runner de Postman contra el entorno de Beanstalk: 22 de 22 tests aprobados](capturas/2.3b-runner-aws.png)
+![Figura 63. Runner de Postman contra el entorno de Beanstalk: 22 de 22 pruebas aprobadas](capturas/2.3b-runner-aws.png)
 
 El detalle de las pruebas locales, de los paquetes y de las pruebas contra AWS está en la carpeta
 `docs/pruebas/` del repositorio.
@@ -617,7 +617,7 @@ entero mayor o igual a 1; otro valor detiene el arranque con un mensaje claro.
 
 **Resultado.** El microservicio de lista negra quedó desplegado de forma manual en AWS Elastic Beanstalk,
 con PostgreSQL en Amazon RDS, y responde POST, GET y `/ping` con el token estático. La colección de
-Postman pasa 22 de 22 tests contra la URL del entorno y la IP guardada es la del cliente. Se ejecutaron
+Postman pasa 22 de 22 pruebas contra la URL del entorno y la IP guardada es la del cliente. Se ejecutaron
 las cuatro estrategias de despliegue sobre el mismo entorno de 3 instancias, con versiones que solo
 cambian la etiqueta de `VERSION`, así que las diferencias medidas se deben a la estrategia.
 
