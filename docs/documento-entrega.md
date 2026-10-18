@@ -89,7 +89,8 @@ dos registros:
 | URL del entorno | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación | [PENDIENTE: enlace del video] |
+| Video de sustentación (SharePoint de la Universidad) | https://uniandes.sharepoint.com/:v:/s/ProyectoDevOps-MISO/IQDl4v5rsG24SbXmYTypkhotAU1kw8GVsyfnz3rKZSCBR0c?e=euxf9Z |
+| Video de sustentación (YouTube) | https://youtu.be/V4EgPlIWDiI |
 
 Notas aclaratorias:
 
@@ -103,8 +104,9 @@ Notas aclaratorias:
   tanto, el funcionamiento del API se ve en el video y en las secciones 4 a 6.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
-- **Video.** Está en una carpeta compartida de Teams de la Universidad, con acceso para las personas de
-  la Universidad de los Andes.
+- **Video.** Es el mismo video en dos lugares. El primer enlace está en una carpeta compartida de Teams
+  de la Universidad, con acceso para las personas de la Universidad de los Andes. El segundo está en
+  YouTube, como copia de respaldo para quien no pueda abrir el de la Universidad.
 
 ## 4. Paso a paso de la creación y el despliegue en AWS Elastic Beanstalk
 
