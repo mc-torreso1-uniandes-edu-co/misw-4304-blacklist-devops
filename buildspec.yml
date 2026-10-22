@@ -1,0 +1,16 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    APP_ENV: "testing"
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.13
+    commands:
+      - pip install -r requirements-dev.txt
+  build:
+    commands:
+      - python -m pytest -q --cov=app
