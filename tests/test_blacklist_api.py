@@ -246,6 +246,15 @@ def test_get_is_case_insensitive(client, auth_headers, unique_email):
     assert response.get_json()[constants.KEY_IS_BLACKLISTED] is True
 
 
+def test_get_ignores_surrounding_spaces(client, auth_headers, unique_email):
+    client.post(constants.BLACKLISTS_PATH, json=valid_payload(unique_email), headers=auth_headers)
+
+    response = client.get(blacklist_path(f"  {unique_email}  "), headers=auth_headers)
+
+    assert response.status_code == HTTPStatus.OK
+    assert response.get_json()[constants.KEY_IS_BLACKLISTED] is True
+
+
 def test_get_returns_false_for_unknown_email(client, auth_headers, unique_email):
     response = client.get(blacklist_path(unique_email), headers=auth_headers)
 
