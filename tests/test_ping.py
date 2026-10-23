@@ -1,6 +1,9 @@
 from http import HTTPStatus
 
+from sqlalchemy import event
+
 from app import constants
+from app.extensions import db
 from app.version import read_app_version
 
 
@@ -14,6 +17,23 @@ def test_ping_returns_only_the_version(client, app):
     response = client.get(constants.PING_PATH)
 
     assert response.get_json() == {constants.KEY_VERSION: app.config[constants.CONFIG_APP_VERSION]}
+
+
+def test_ping_does_not_query_the_database(app, client):
+    statements = []
+
+    def record_statement(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    with app.app_context():
+        event.listen(db.engine, "before_cursor_execute", record_statement)
+        try:
+            response = client.get(constants.PING_PATH)
+        finally:
+            event.remove(db.engine, "before_cursor_execute", record_statement)
+
+    assert response.status_code == HTTPStatus.OK
+    assert statements == []
 
 
 def test_read_app_version_returns_file_content(tmp_path):
