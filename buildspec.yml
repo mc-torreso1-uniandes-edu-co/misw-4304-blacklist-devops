@@ -8,13 +8,13 @@ env:
 phases:
   install:
     runtime-versions:
-      python: 3.13
+      python: "3.13"
     commands:
       - pip install -r requirements-dev.txt
   build:
     commands:
-      - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
       - python -m pytest -q --cov=app
+      - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
       - ETIQUETA="${COMMIT_ID:0:7}"
       - python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
       - python -m zipfile -l "dist/app-${ETIQUETA}.zip"
