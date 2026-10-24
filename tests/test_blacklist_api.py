@@ -1,3 +1,4 @@
+from datetime import timezone
 from http import HTTPStatus
 from uuid import uuid4
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 
 from app import constants, create_app
 from app.config import TestConfig
+from app.domain.clock import utc_now
 from app.extensions import db
 from app.infrastructure.persistence.blacklist_entry_model import BlacklistEntryModel
 from app.infrastructure.persistence.sqlalchemy_blacklist_repository import SqlAlchemyBlacklistRepository
@@ -58,6 +60,19 @@ def test_post_with_null_blocked_reason_is_allowed(client, auth_headers, unique_e
     response = client.post(constants.BLACKLISTS_PATH, json=payload, headers=auth_headers)
 
     assert response.status_code == HTTPStatus.CREATED
+
+
+def test_post_stores_creation_date(app, client, auth_headers, unique_email):
+    before = utc_now()
+
+    client.post(constants.BLACKLISTS_PATH, json=valid_payload(unique_email), headers=auth_headers)
+
+    after = utc_now()
+    with app.app_context():
+        stored = db.session.execute(select(BlacklistEntryModel).filter_by(email=unique_email)).scalar_one()
+    created_at = stored.created_at
+    created_at_utc = created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None else created_at
+    assert before <= created_at_utc <= after
 
 
 def test_post_duplicated_email_returns_conflict(client, auth_headers, unique_email):
@@ -177,6 +192,15 @@ def test_post_rejects_too_long_blocked_reason(client, auth_headers, unique_email
     assert constants.FIELD_BLOCKED_REASON in response.get_json()[constants.KEY_ERRORS]
 
 
+def test_post_accepts_blocked_reason_at_max_length(client, auth_headers, unique_email):
+    max_length_reason = "a" * constants.BLOCKED_REASON_MAX_LENGTH
+    payload = valid_payload(unique_email, **{constants.FIELD_BLOCKED_REASON: max_length_reason})
+
+    response = client.post(constants.BLACKLISTS_PATH, json=payload, headers=auth_headers)
+
+    assert response.status_code == HTTPStatus.CREATED
+
+
 def test_post_rejects_missing_required_fields(client, auth_headers):
     response = client.post(constants.BLACKLISTS_PATH, json={}, headers=auth_headers)
 
@@ -219,6 +243,15 @@ def test_get_is_case_insensitive(client, auth_headers, unique_email):
 
     response = client.get(blacklist_path(unique_email.upper()), headers=auth_headers)
 
+    assert response.get_json()[constants.KEY_IS_BLACKLISTED] is True
+
+
+def test_get_ignores_surrounding_spaces(client, auth_headers, unique_email):
+    client.post(constants.BLACKLISTS_PATH, json=valid_payload(unique_email), headers=auth_headers)
+
+    response = client.get(blacklist_path(f"  {unique_email}  "), headers=auth_headers)
+
+    assert response.status_code == HTTPStatus.OK
     assert response.get_json()[constants.KEY_IS_BLACKLISTED] is True
 
 

@@ -1,6 +1,7 @@
 from http import HTTPStatus
 from uuid import uuid4
 
+import pytest
 from flask_jwt_extended import create_access_token
 
 from app import constants
@@ -10,6 +11,13 @@ OTHER_SECRET_KEY = "otra-clave-secreta-distinta-con-longitud-suficiente"
 MALFORMED_TOKEN = "esto.no.es-un-jwt"
 UNSUPPORTED_SCHEME_HEADER = {AUTHORIZATION_HEADER: "Basic dXN1YXJpbzpjbGF2ZQ=="}
 BEARER_WITHOUT_TOKEN_HEADER = {AUTHORIZATION_HEADER: "Bearer"}
+REJECTED_SCENARIOS = (
+    "sin token",
+    "token malformado",
+    "esquema no soportado",
+    "bearer sin token",
+    "firma con otra clave",
+)
 
 
 def post_payload(email):
@@ -34,17 +42,21 @@ def rejected_headers(app):
     }
 
 
-def test_post_rejects_invalid_credentials_with_unauthorized(app, client, unique_email):
-    for scenario, headers in rejected_headers(app).items():
-        response = client.post(constants.BLACKLISTS_PATH, json=post_payload(unique_email), headers=headers)
+@pytest.mark.parametrize("scenario", REJECTED_SCENARIOS)
+def test_post_rejects_invalid_credentials_with_unauthorized(app, client, unique_email, scenario):
+    headers = rejected_headers(app)[scenario]
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED, scenario
-        assert constants.KEY_MSG in response.get_json(), scenario
+    response = client.post(constants.BLACKLISTS_PATH, json=post_payload(unique_email), headers=headers)
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert constants.KEY_MSG in response.get_json()
 
 
-def test_get_rejects_invalid_credentials_with_unauthorized(app, client, unique_email):
-    for scenario, headers in rejected_headers(app).items():
-        response = client.get(f"{constants.BLACKLISTS_PATH}/{unique_email}", headers=headers)
+@pytest.mark.parametrize("scenario", REJECTED_SCENARIOS)
+def test_get_rejects_invalid_credentials_with_unauthorized(app, client, unique_email, scenario):
+    headers = rejected_headers(app)[scenario]
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED, scenario
-        assert constants.KEY_MSG in response.get_json(), scenario
+    response = client.get(f"{constants.BLACKLISTS_PATH}/{unique_email}", headers=headers)
+
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
+    assert constants.KEY_MSG in response.get_json()
