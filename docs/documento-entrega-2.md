@@ -103,11 +103,12 @@ que pide el enunciado) y con cada pull request abierto o actualizado hacia `dev`
 los cambios antes de fusionarlos. Los cambios que solo tocan documentación (`docs/**`, `postman/**` o
 archivos `.md`) no lo disparan.
 
-El disparo por *push* a `main` está comprobado: el *merge* de la promoción `b0e9d03` inició la ejecución
-5 segundos después, sin intervención manual (sección 6). El disparador de pull requests está configurado,
-pero todavía no ha iniciado ninguna ejecución; su revisión está en la tarea 1.11 (#103), junto con la
-propuesta de quitar la exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actualiza
-este párrafo.
+Los dos disparadores están comprobados, sin intervención manual: el *merge* de la promoción `b0e9d03` en
+`main` inició la ejecución exitosa 5 segundos después (sección 6), y el pull request #160 de
+`test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
+(sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
+causa identificada; su revisión sigue en la tarea 1.11 (#103), junto con la propuesta de quitar la
+exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actualiza este párrafo.
 
 **Flujo de una ejecución:**
 
