@@ -52,3 +52,11 @@ def test_read_app_version_returns_default_when_file_is_empty(tmp_path):
     version_file.write_text("  \n", encoding="utf-8")
 
     assert read_app_version(version_file) == constants.DEFAULT_APP_VERSION
+
+
+# Falla a propósito: es la evidencia del build fallido (tarea 2.9, #113).
+# Esta prueba no se fusiona; solo vive en la rama temporal del caso fallido.
+def test_intentional_failure_for_the_pipeline(client):
+    response = client.get(constants.PING_PATH)
+
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
