@@ -79,9 +79,10 @@ AWS CodeBuild · blacklist-devops-ci-build (buildspec.yml)
      │  3. Empaqueta la aplicación: app-<commit>.zip
      │  Registros de cada fase en Amazon CloudWatch Logs
      ▼
-Amazon S3 · blacklist-devops-ci-artifacts-253041091381 (app-<commit>.zip)
+Amazon S3 · blacklist-devops-ci-artifacts-253041091381
+     │  almacén del pipeline: objeto BuildArtif/<id> que contiene app-<commit>.zip
      ┊
-     ┊  despliegue manual, fuera del pipeline
+     ┊  despliegue manual, fuera del pipeline: se extrae el paquete y se sube a Beanstalk
      ▼
 AWS Elastic Beanstalk · Blacklist-devops-env
 ```
@@ -92,15 +93,21 @@ AWS Elastic Beanstalk · Blacklist-devops-env
 | Conexión | `blacklist-devops-github` (AWS CodeConnections) | Autoriza a AWS a leer el repositorio mediante una aplicación de GitHub limitada a este repositorio, sin tokens personales ni llaves guardadas |
 | Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` | Detecta los cambios y orquesta las dos etapas: Origen (obtiene el código) y Construcción (lanza CodeBuild). Modo de ejecución `QUEUED`: si llegan varios cambios, se ejecutan en orden y ninguno reemplaza a otro |
 | Construcción | AWS CodeBuild, `blacklist-devops-ci-build` | Ejecuta las fases del `buildspec.yml`: instala las dependencias, corre las pruebas y genera el paquete. Si una prueba falla, el build termina en *Failed* y no se genera artefacto |
-| Artefacto | Amazon S3, `blacklist-devops-ci-artifacts-253041091381` | Bucket privado, con el acceso público bloqueado y cifrado SSE-S3. Guarda el paquete `app-<commit>.zip`, identificado con los siete primeros caracteres del commit |
+| Artefacto | Amazon S3, `blacklist-devops-ci-artifacts-253041091381` | Bucket privado, con el acceso público bloqueado y cifrado SSE-S3, que también es el almacén de artefactos del pipeline. CodePipeline guarda la salida del build como un objeto con nombre generado (`blacklist-devops-ci-/BuildArtif/<id>`) que contiene el paquete `app-<commit>.zip`, identificado con los siete primeros caracteres del commit |
 | Permisos | Roles de IAM `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` | Cada servicio actúa con su propio rol y permisos mínimos sobre los recursos del proyecto. Ninguno tiene permisos de administrador ni usa llaves de acceso |
 | Registros | Amazon CloudWatch Logs | Guarda la salida de cada build, con el resultado de las pruebas |
-| Despliegue | AWS Elastic Beanstalk, `Blacklist-devops-env` | Fuera del pipeline: una persona crea la versión de la aplicación a partir del paquete en S3 y la despliega en el entorno de la Entrega 1 |
+| Despliegue | AWS Elastic Beanstalk, `Blacklist-devops-env` | Fuera del pipeline: una persona descarga el objeto del build, extrae `app-<commit>.zip`, lo sube como versión de la aplicación y la despliega en el entorno de la Entrega 1 |
 
 **Cuándo se ejecuta.** El pipeline se dispara con cada *push* a `main` (el commit en la rama principal
 que pide el enunciado) y con cada pull request abierto o actualizado hacia `dev` o `main`, para validar
 los cambios antes de fusionarlos. Los cambios que solo tocan documentación (`docs/**`, `postman/**` o
 archivos `.md`) no lo disparan.
+
+El disparo por *push* a `main` está comprobado: el *merge* de la promoción `b0e9d03` inició la ejecución
+5 segundos después, sin intervención manual (sección 6). El disparador de pull requests está configurado,
+pero todavía no ha iniciado ninguna ejecución; su revisión está en la tarea 1.11 (#103), junto con la
+propuesta de quitar la exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actualiza
+este párrafo.
 
 **Flujo de una ejecución:**
 
@@ -108,10 +115,11 @@ archivos `.md`) no lo disparan.
 2. CodePipeline recibe el evento por la conexión de GitHub y la etapa Origen obtiene el código de ese
    commit.
 3. La etapa Construcción lanza CodeBuild, que instala las dependencias y ejecuta las pruebas.
-4. Si todas las pruebas pasan, CodeBuild genera `app-<commit>.zip` y lo deja en el bucket de S3. Si una
-   falla, el build y la ejecución del pipeline terminan en *Failed* y no se genera artefacto.
-5. Fuera del pipeline, el equipo despliega manualmente en Beanstalk el paquete del último build
-   exitoso de `main`.
+4. Si todas las pruebas pasan, CodeBuild genera `app-<commit>.zip` y CodePipeline lo guarda en el bucket
+   de S3, dentro del objeto de salida del build. Si una falla, el build y la ejecución del pipeline
+   terminan en *Failed* y no se genera artefacto.
+5. Fuera del pipeline, el equipo extrae el paquete del último build exitoso de `main` y lo despliega
+   manualmente en Beanstalk.
 
 **Decisiones de la arquitectura:**
 
@@ -124,14 +132,13 @@ archivos `.md`) no lo disparan.
   adicionales en CodeBuild. El proyecto de CodeBuild no define la cadena de conexión a la base ni
   secretos.
 - **Artefacto en S3,** como paquete `.zip` listo para crear una versión de la aplicación en Beanstalk
-  (el enunciado permite un repositorio o una imagen de contenedor; no se usan contenedores).
+  (el enunciado permite un repositorio o una imagen de contenedor; no se usan contenedores). El
+  `buildspec.yml` lo declara en su sección `artifacts` y CodePipeline lo publica en su almacén, sin
+  llamadas a la CLI de AWS desde el build. El diseño inicial proponía copiar además el paquete con su
+  nombre al bucket; esa opción sigue en revisión en la tarea 1.11 (#103).
 
-El diseño completo, con el `buildspec.yml` propuesto y los permisos de cada recurso, está en
-`docs/ci/1.1-diseno-pipeline.md`.
-
-[PENDIENTE: confirmar esta sección con la configuración final del proyecto de CodeBuild (1.7, #99), la
-generación del artefacto (1.9, #101) y el disparo (1.11, #103), en particular la ubicación del paquete en
-el bucket y si el disparador de pull requests sigue activo después de tomar las capturas.]
+El diseño completo, con los permisos de cada recurso, está en `docs/ci/1.1-diseno-pipeline.md`; la
+configuración real de cada recurso, en `docs/ci/1.7-proyecto-codebuild.md` y `docs/ci/1.11-pipeline.md`.
 
 ## 3. Enlaces de la entrega
 
