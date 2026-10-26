@@ -20,8 +20,9 @@ como sustentación, y lo que pase del minuto 10 no se califica.
 | 3 | Juan Sebastián Páez | 4:30–6:45 | Pipeline exitoso, artefacto y despliegue manual |
 | 4 | Jean Pierre Betancourt | 6:45–9:00 | Pipeline fallido y cierre |
 
-El reparto de las partes 2 a 4 sigue a quien construyó cada pieza. Las grabaciones del tablero (4.2 a 4.4) se
-ajustan a este guion.
+El reparto de las partes 2 a 4 sigue a quien construyó cada pieza. Tareas de grabación del tablero: 4.2 (#127)
+es la parte 1 (Marcelo), 4.3 (#128) es la parte 2 (Héctor) y 4.4 (#129) son las partes 3 y 4 (Juan Sebastián y
+Jean Pierre). Las integra Jean Pierre en la 4.5 (#130).
 
 ## 1. Marcelo Torres · 0:00–2:15 · Presentación y pruebas
 
