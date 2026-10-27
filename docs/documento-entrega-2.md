@@ -108,7 +108,8 @@ Los dos disparadores están comprobados, sin intervención manual: el *merge* de
 `main` inició la ejecución exitosa 5 segundos después (sección 6), y el pull request #160 de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
-causa identificada; el siguiente pull request hacia `main`, el #164, sí la inició.
+causa identificada; el siguiente pull request hacia `main`, el #164, sí inició la ejecución `901438a7`, y el
+*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito.
 
 El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
 quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
@@ -140,7 +141,9 @@ iniciaba el build, y el enunciado pide que lo haga cada commit.
   (el enunciado permite un repositorio o una imagen de contenedor; no se usan contenedores). El
   `buildspec.yml` lo declara en su sección `artifacts` y CodePipeline lo publica en su almacén, sin
   llamadas a la CLI de AWS desde el build. El diseño inicial proponía copiar además el paquete con su
-  nombre al bucket; esa opción sigue en revisión en la tarea 1.11 (#103).
+  nombre al bucket; no se implementó, y para desplegar se extrae el paquete del objeto del build
+  (sección 6).
+
 ## 3. Enlaces de la entrega
 
 [PENDIENTE: tarea 3.6 (#122).]
@@ -380,7 +383,8 @@ nuevo en el bucket es el código de origen que la etapa Source deja como entrada
    disparador de *push* produjo el build exitoso y el de pull request, el fallido.
 5. **El disparador de pull request se comportó distinto en dos intentos.** Con el #160 hacia `dev` se
    inició la ejecución; con el #156 hacia `main`, abierto cuando el pipeline ya existía, no se inició.
-   La causa no está identificada y su revisión sigue en la tarea 1.11 (#103).
+   El siguiente pull request hacia `main`, el #164, sí la inició (`901438a7`). La causa del caso del #156
+   no está identificada.
 6. **La ubicación de salida del build no es un artefacto.** El build informa `BuildArtif/krWSeNK`, pero
    ese objeto no existe porque la subida falló; conviene no confundirlo con un paquete generado.
 
