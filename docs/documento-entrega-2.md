@@ -49,10 +49,10 @@ minúsculas y sin espacios al guardar y al consultar.
 **Pruebas unitarias.** La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`. Cada
 endpoint tiene sus escenarios: respuestas correctas, validaciones, duplicados, normalización del email,
 las cinco variantes de credencial inválida (401) y que `/ping` no consulta la base. Las pruebas usan
-SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. La matriz de
-escenarios por endpoint, con la prueba que cubre cada uno, está en
-`docs/pruebas/2.1-escenarios-por-endpoint.md`, y la verificación de que la suite corre sin cambios en un
-entorno limpio como el de CodeBuild, en `docs/pruebas/2.4-pruebas-ci.md`.
+SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. Antes de configurar
+el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni base de datos, como
+el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por archivo y en orden
+inverso.
 
 ## 2. Arquitectura de la integración continua
 
@@ -100,15 +100,20 @@ AWS Elastic Beanstalk · Blacklist-devops-env
 
 **Cuándo se ejecuta.** El pipeline se dispara con cada *push* a `main` (el commit en la rama principal
 que pide el enunciado) y con cada pull request abierto o actualizado hacia `dev` o `main`, para validar
-los cambios antes de fusionarlos. Los cambios que solo tocan documentación (`docs/**`, `postman/**` o
-archivos `.md`) no lo disparan.
+los cambios antes de fusionarlos. El *push* a `main` no excluye ningún archivo, de modo que todo commit en
+la rama principal inicia el build; en los pull requests se omiten los cambios que solo tocan documentación
+(`docs/**`, `postman/**` o archivos `.md`).
 
 Los dos disparadores están comprobados, sin intervención manual: el *merge* de la promoción `b0e9d03` en
 `main` inició la ejecución exitosa 5 segundos después (sección 6), y el pull request #160 de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
-causa identificada; su revisión sigue en la tarea 1.11 (#103), junto con la propuesta de quitar la
-exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actualiza este párrafo.
+causa identificada; el siguiente pull request hacia `main`, el #164, sí inició la ejecución `901438a7`, y el
+*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito.
+
+El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
+quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
+iniciaba el build, y el enunciado pide que lo haga cada commit.
 
 **Flujo de una ejecución:**
 
@@ -136,18 +141,255 @@ exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actua
   (el enunciado permite un repositorio o una imagen de contenedor; no se usan contenedores). El
   `buildspec.yml` lo declara en su sección `artifacts` y CodePipeline lo publica en su almacén, sin
   llamadas a la CLI de AWS desde el build. El diseño inicial proponía copiar además el paquete con su
-  nombre al bucket; esa opción sigue en revisión en la tarea 1.11 (#103).
-
-El diseño completo, con los permisos de cada recurso, está en `docs/ci/1.1-diseno-pipeline.md`; la
-configuración real de cada recurso, en `docs/ci/1.7-proyecto-codebuild.md` y `docs/ci/1.11-pipeline.md`.
+  nombre al bucket; no se implementó, y para desplegar se extrae el paquete del objeto del build
+  (sección 6).
 
 ## 3. Enlaces de la entrega
 
-[PENDIENTE: tarea 3.6 (#122).]
+| Recurso | Enlace |
+|---|---|
+| Repositorio de GitHub | https://github.com/mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops |
+| URL del entorno | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com |
+| Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
+| Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
+| Video de sustentación | [PENDIENTE: tarea 4.5 (#130).] |
+
+Notas aclaratorias:
+
+- **Mismos recursos de la Entrega 1.** El repositorio, el entorno, el workspace de Postman y la
+  documentación publicada son los de la Entrega 1; solo el video es nuevo.
+- **Repositorio.** Es privado. Si el tutor necesita acceso, debe suministrar su usuario de GitHub para
+  agregarlo como colaborador.
+- **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
+  mientras se trabaja y se graba el video: para esta entrega se volvió a provisionar el 23 de octubre de
+  2026, con la misma URL, y se apaga después de grabar, así que puede no responder durante la
+  calificación. El pipeline de integración continua no depende del entorno.
+- **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
+  ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 
 ## 4. Configuración en AWS
 
-[PENDIENTE: tarea 3.2 (#118).]
+Cubre el punto 2 de la configuración (10 %): el proyecto de AWS CodeBuild creado y configurado, con los
+recursos que lo sostienen. Todo está en la cuenta `253041091381` y en la región `us-east-2` (Ohio), bajo
+el plan gratuito de AWS: ninguna configuración activó características avanzadas ni cambió de plan. Los
+recursos se crearon en octubre de 2026: el bucket y los roles el 22, el proyecto de CodeBuild el 23 y el
+pipeline el 24; la conexión ya estaba disponible el 21. El bucket, la conexión y los roles se crearon en
+la consola de AWS, y el proyecto de CodeBuild y el pipeline con la CLI de la misma cuenta, verificados
+después en la consola. Los bloques de comandos de esta sección son el equivalente en la CLI de lo que se
+hizo en la consola: desde una terminal local llevan `--profile blacklist`, el perfil de la cuenta del
+proyecto, y en AWS CloudShell no hace falta.
+
+### 4.1 Orden de creación y dependencias
+
+| Paso | Recurso | Nombre | Depende de |
+|---|---|---|---|
+| 1 | Bucket de Amazon S3 | `blacklist-devops-ci-artifacts-253041091381` | Nada |
+| 2 | Conexión de GitHub (AWS CodeConnections) | `blacklist-devops-github` | Nada; la autoriza la persona dueña del repositorio |
+| 3 | Roles de IAM | `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` | El bucket y el ARN de la conexión |
+| 4 | Proyecto de AWS CodeBuild | `blacklist-devops-ci-build` | El rol de CodeBuild |
+| 5 | Pipeline de AWS CodePipeline | `blacklist-devops-ci-pipeline` | El bucket, el rol de CodePipeline, la conexión y el proyecto |
+
+La conexión se crea antes que los roles porque la política del rol de CodePipeline usa su ARN, que lleva
+un identificador que AWS genera en ese momento: si la conexión se reemplaza, el ARN cambia. Los ARN del
+proyecto y del pipeline se forman con su nombre, así que sus políticas se pueden escribir de antemano.
+Ese orden no se respetó en el primer intento: la conexión se creó con un espacio al final del nombre y
+hubo que eliminarla y crearla otra vez con el mismo nombre. Las capturas de esta sección son de la
+conexión vigente.
+
+### 4.2 Bucket de artefactos
+
+| Propiedad | Valor |
+|---|---|
+| Nombre | `blacklist-devops-ci-artifacts-253041091381` |
+| Región | `us-east-2` (Ohio) |
+| Tipo | *General purpose*, en el espacio de nombres global |
+| Propiedad de los objetos | `Bucket owner enforced`, con las listas de control de acceso deshabilitadas |
+| Bloqueo del acceso público | Activado, con las cuatro opciones en `true` |
+| Cifrado predeterminado | `AES256`, cifrado del lado del servidor con claves administradas por Amazon S3 (SSE-S3) |
+| Bucket Key | Deshabilitado: con SSE-S3 no cambia el cifrado, solo las llamadas a AWS KMS |
+| Versionado | Deshabilitado |
+| Política del bucket | Ninguna: el acceso se controla con los roles |
+| Uso | Guardar el objeto que CodePipeline produce con el paquete de cada build |
+
+El nombre quedó fijado en el diseño con el identificador de la cuenta. Se eligió el espacio de nombres
+global porque el regional agrega un sufijo al nombre. El bucket es privado: el acceso público está
+bloqueado en las cuatro opciones, no tiene política y el cifrado con llaves del cliente (SSE-C) está
+bloqueado. Los objetos que escribe el pipeline aparecen cifrados con `aws:kms` porque el proyecto de
+CodeBuild cifra sus artefactos con la clave administrada `aws/s3` (figura 4.11); eso no contradice el
+cifrado por defecto del bucket, que sigue siendo SSE-S3.
+
+Equivalente en la CLI:
+
+```bash
+aws s3api create-bucket --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --create-bucket-configuration LocationConstraint=us-east-2
+
+aws s3api put-public-access-block --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+aws s3api put-bucket-encryption --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":false}]}'
+```
+
+![Figura 4.1. Bucket de artefactos recién creado, vacío, en la región us-east-2](capturas/entrega-2/1.4-bucket-creado.png)
+
+![Figura 4.2. Permisos del bucket: bloqueo total del acceso público y sin política](capturas/entrega-2/1.4-permisos-acceso-publico.png)
+
+![Figura 4.3. Cifrado predeterminado SSE-S3, con Bucket Key deshabilitado y el cifrado con llaves del cliente bloqueado](capturas/entrega-2/1.4-cifrado-estado-final.png)
+
+### 4.3 Conexión con GitHub
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-github` |
+| Proveedor | GitHub, por la aplicación *AWS Connector for GitHub* |
+| ARN | `arn:aws:codeconnections:us-east-2:253041091381:connection/78ec2a5d-2f14-4972-bc66-b54a9571b2f9` |
+| Estado | `AVAILABLE` |
+| Acceso en GitHub | *Only select repositories*: solo `mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops` |
+| Credenciales guardadas | Ninguna: sin token personal y sin llave SSH |
+
+La conexión evita guardar un token personal en el repositorio, en una variable de entorno o en la
+configuración del pipeline: AWS lee el código con una aplicación de GitHub que la persona dueña del
+repositorio autoriza en el navegador, y esa autorización queda limitada a un repositorio. La CLI crea la
+conexión en estado *Pending*; solo la autorización en GitHub la deja *Available*.
+
+Equivalente en la CLI:
+
+```bash
+aws codeconnections create-connection --region us-east-2 \
+  --provider-type GitHub --connection-name blacklist-devops-github
+```
+
+![Figura 4.4. Aplicación de GitHub limitada a un solo repositorio](capturas/entrega-2/1.6-github-acceso-repositorio.png)
+
+![Figura 4.5. Conexión blacklist-devops-github en estado Available, con su ARN](capturas/entrega-2/1.6-conexion-detalle.png)
+
+### 4.4 Roles de servicio
+
+| Dato | `blacklist-devops-codebuild-role` | `blacklist-devops-codepipeline-role` |
+|---|---|---|
+| Servicio que lo asume | `codebuild.amazonaws.com` | `codepipeline.amazonaws.com` |
+| Condición de confianza | `aws:SourceAccount = 253041091381` | `aws:SourceAccount = 253041091381` |
+| Política | En línea, `acceso-minimo-ci` | En línea, `acceso-minimo-ci` |
+| Permisos | Escribir en el grupo de CloudWatch del proyecto; leer y escribir objetos del bucket | Leer y escribir objetos del bucket; usar la conexión de GitHub; lanzar y consultar el proyecto de CodeBuild |
+| Políticas administradas | Ninguna | Ninguna |
+
+Ninguno de los dos roles tiene permisos de administrador y ninguna de sus sentencias usa `*` como acción:
+los recursos son ARN concretos del bucket, del proyecto y de la conexión, sin comodines de cuenta.
+Tampoco hay llaves de acceso, porque los servicios asumen el rol con credenciales temporales de STS. El
+rol de CodeBuild no tiene permiso sobre la conexión de GitHub porque el pipeline le entrega el código ya
+descargado, como un ZIP.
+
+Antes de ejecutar los comandos, la relación de confianza y la política de cada rol se guardan en un
+archivo JSON. Equivalente en la CLI:
+
+```bash
+aws iam create-role --role-name blacklist-devops-codebuild-role \
+  --assume-role-policy-document file://trust-codebuild.json
+aws iam put-role-policy --role-name blacklist-devops-codebuild-role \
+  --policy-name acceso-minimo-ci --policy-document file://policy-codebuild.json
+aws iam create-role --role-name blacklist-devops-codepipeline-role \
+  --assume-role-policy-document file://trust-codepipeline.json
+aws iam put-role-policy --role-name blacklist-devops-codepipeline-role \
+  --policy-name acceso-minimo-ci --policy-document file://policy-codepipeline.json
+```
+
+![Figura 4.6. Los dos roles de servicio del proyecto en IAM](capturas/entrega-2/1.5-roles-lista.png)
+
+![Figura 4.7. Política acceso-minimo-ci del rol de CodeBuild](capturas/entrega-2/1.5-codebuild-politica.png)
+
+![Figura 4.8. Política del rol de CodePipeline, con la conexión y el proyecto](capturas/entrega-2/1.5-codepipeline-politica.png)
+
+### 4.5 Proyecto de CodeBuild
+
+Es el recurso que ejecuta las pruebas y genera el artefacto: el que sostiene este punto de la
+configuración.
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-ci-build` |
+| ARN | `arn:aws:codebuild:us-east-2:253041091381:project/blacklist-devops-ci-build` |
+| Proveedor del origen | AWS CodePipeline: el código llega de la etapa de origen del pipeline |
+| Artefactos | AWS CodePipeline: el paquete vuelve al almacén del pipeline, en el bucket de artefactos |
+| Archivo de construcción | `buildspec.yml`, en la raíz del repositorio (nombre por defecto) |
+| Imagen | `aws/codebuild/amazonlinux-x86_64-standard:6.0`, sobre Amazon Linux 2023 |
+| Tipo de entorno y cómputo | Contenedor Linux sobre EC2, `BUILD_GENERAL1_SMALL`: 2 CPU virtuales y 4 GiB de memoria |
+| Modo privilegiado | Desactivado: solo se necesita para construir imágenes de contenedor |
+| Variables de entorno | Ninguna: `APP_ENV` y las demás viven en el `buildspec.yml`, y `COMMIT_ID` lo entrega el pipeline |
+| Rol de servicio | `blacklist-devops-codebuild-role` |
+| Registros | CloudWatch Logs activado, grupo `/aws/codebuild/blacklist-devops-ci-build` |
+| Caché | Sin caché |
+| Tiempo de espera | 60 minutos, el valor por defecto |
+| Compilaciones públicas | Deshabilitadas |
+
+El origen es CodePipeline porque el proyecto no necesita acceso propio a GitHub: recibe el código de la
+etapa de origen, que es la que usa la conexión. La imagen es la que el equipo eligió por ser la más
+reciente de Amazon Linux disponible. El cómputo es el más pequeño, porque las pruebas usan SQLite en
+memoria y el paquete es un `.zip` de 11 KB. No se configuraron variables de entorno en el proyecto para
+no repartir configuración ni secretos: lo que el build necesita está en el repositorio, y el
+identificador del commit lo inyecta el pipeline.
+
+La página del proyecto muestra un aviso azul que indica que el sistema operativo anfitrión es Amazon Linux
+2 y recomienda pasar a Amazon Linux 2023. Es informativo y no afecta el build: la imagen del entorno ya es
+`standard:6.0`, que resuelve Python 3.13.16 (sección 6). No es el aviso de características avanzadas del
+plan gratuito, que no apareció en ninguna pantalla.
+
+Equivalente en la CLI:
+
+```bash
+aws codebuild create-project --region us-east-2 \
+  --name blacklist-devops-ci-build \
+  --source type=CODEPIPELINE --artifacts type=CODEPIPELINE \
+  --environment type=LINUX_CONTAINER,computeType=BUILD_GENERAL1_SMALL,image=aws/codebuild/amazonlinux-x86_64-standard:6.0 \
+  --service-role arn:aws:iam::253041091381:role/blacklist-devops-codebuild-role \
+  --logs-config cloudWatchLogs={status=ENABLED}
+```
+
+![Figura 4.9. Configuración del proyecto: origen AWS CodePipeline y rol de servicio](capturas/entrega-2/1.7-proyecto-configuracion.png)
+
+![Figura 4.10. Entorno del proyecto: imagen standard:6.0, contenedor Linux, EC2 con 2 CPU y 4 GiB, sin variables de entorno](capturas/entrega-2/1.7-proyecto-entorno.png)
+
+![Figura 4.11. Artefactos y registros del proyecto: sin caché, cifrado con la clave aws/s3 y CloudWatch Logs activado](capturas/entrega-2/1.7-proyecto-registros.png)
+
+### 4.6 Pipeline y verificación
+
+El último recurso es el pipeline `blacklist-devops-ci-pipeline`, de tipo V2 y modo de ejecución `QUEUED`,
+con una etapa de origen en GitHub y una de construcción en CodeBuild. El pipeline entrega a CodeBuild el
+identificador del commit en la variable `COMMIT_ID`, y el artefacto de salida vuelve al bucket de la
+sección 4.2. No tiene etapa de despliegue, porque la entrega excluye el despliegue automatizado: el
+pipeline termina cuando el paquete queda en el bucket. Se crea con un archivo de definición:
+
+```bash
+aws codepipeline create-pipeline --region us-east-2 --cli-input-json file://pipeline.json
+```
+
+Su contenido, los disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la
+sección 5.
+
+Los cinco recursos se comprueban con consultas de solo lectura, que se pueden repetir sin cambiar nada.
+Las de S3, CodeConnections, CodeBuild y CodePipeline llevan `--region us-east-2`:
+
+| Consulta | Resultado esperado |
+|---|---|
+| `aws s3api get-bucket-encryption --bucket blacklist-devops-ci-artifacts-253041091381` | Cifrado `AES256`, con `BucketKeyEnabled` en `false` |
+| `aws s3api get-public-access-block --bucket blacklist-devops-ci-artifacts-253041091381` | Las cuatro opciones de bloqueo en `true` |
+| `aws iam get-role-policy --role-name blacklist-devops-codebuild-role --policy-name acceso-minimo-ci` | La política en línea `acceso-minimo-ci` del rol de CodeBuild |
+| `aws iam get-role-policy --role-name blacklist-devops-codepipeline-role --policy-name acceso-minimo-ci` | La política en línea `acceso-minimo-ci` del rol de CodePipeline |
+| `aws codeconnections list-connections` | `blacklist-devops-github` en estado `AVAILABLE` |
+| `aws codebuild batch-get-projects --names blacklist-devops-ci-build` | Origen y artefactos `CODEPIPELINE`, el rol del proyecto y los registros activados |
+| `aws codepipeline get-pipeline --name blacklist-devops-ci-pipeline` | Tipo `V2`, modo `QUEUED` y los disparadores de Git |
+
+El 27 de octubre de 2026 se ejecutaron por CLI las consultas del bucket, de la conexión, del proyecto y
+del pipeline, y todas devolvieron lo esperado. Los dos roles se comprobaron en la consola, con las figuras
+4.6 a 4.8, y no por CLI. La revisión de las capturas, del 26 de octubre, confirmó que ninguna muestra
+secretos: no hay tokens, contraseñas ni variables de entorno con valores. El número de cuenta y los ARN
+aparecen porque no son secretos, y las políticas de IAM solo contienen nombres y ARN de recursos del
+proyecto.
 
 ## 5. Archivo de construcción y disparo automático
 
@@ -155,11 +397,235 @@ configuración real de cada recurso, en `docs/ci/1.7-proyecto-codebuild.md` y `d
 
 ## 6. Pipeline exitoso
 
-[PENDIENTE: tarea 3.4 (#120).]
+Cubre el punto 1 del documento (10 %) y respalda el punto 4 de la configuración (15 %): un commit en la
+rama principal inició el pipeline sin intervención manual, CodeBuild ejecutó las pruebas y generó el
+artefacto. Todas las horas están en UTC-05:00 (Colombia).
+
+### 6.1 Qué se ejecutó
+
+El 24 de octubre de 2026 se fusionó en `main` la promoción de `dev` (pull request #156), que llevó por
+primera vez el `buildspec.yml` a la rama principal. El *merge* creó el commit `b0e9d03`, y ese *push* a
+`main` disparó la ejecución.
+
+| Dato | Valor |
+|---|---|
+| Commit en `main` | `b0e9d0397c05ba9b66fdd69161efd3619265f97d` (`b0e9d03`), 11:19:44 |
+| Ejecución del pipeline | `ff3146a4-74b7-458f-927e-980fee5eb56d`, **Succeeded** |
+| Disparo | *Push* a `main`, 5 segundos después del *merge*, sin intervención manual |
+| Duración del pipeline | 38 segundos (11:19:49 a 11:20:27) |
+| Build de CodeBuild | Build número 2, `blacklist-devops-ci-build:de0d4f11-4626-44a5-b969-3987f6ac0c91`, **SUCCEEDED**, iniciado por `codepipeline/blacklist-devops-ci-pipeline` |
+| Duración del build | 30 segundos (11:19:56 a 11:20:26) |
+| Entorno del build | Imagen `aws/codebuild/amazonlinux-x86_64-standard:6.0`, Python **3.13.16** |
+| Variable `COMMIT_ID` | El hash completo del commit, entregado por el pipeline |
+| Pruebas | **97 aprobadas**, 0 fallidas; cobertura de `app/` del **100 %** |
+| Paquete | `app-b0e9d03.zip`, 31 archivos, `VERSION = b0e9d03` |
+
+![Figura 6.1. Commit de la promoción en main (PR #156 fusionado)](capturas/entrega-2/2.6-github-commit-main.png)
+
+![Figura 6.2. Historial del pipeline: la ejecución disparada por el commit b0e9d039 en main, Succeeded en 38 s](capturas/entrega-2/2.6-pipeline-historial.png)
+
+![Figura 6.3. Ejecución del pipeline: etapas Source y Build correctas con el commit b0e9d039](capturas/entrega-2/2.6-pipeline-ejecucion.png)
+
+### 6.2 Fases y pruebas
+
+| Fase del build | Estado | Duración |
+|---|---|---|
+| `PROVISIONING` | Succeeded | 3 s |
+| `DOWNLOAD_SOURCE` | Succeeded | 2 s |
+| `INSTALL` | Succeeded | 19 s |
+| `BUILD` | Succeeded | 3 s |
+| `UPLOAD_ARTIFACTS` | Succeeded | < 1 s |
+
+Las fases `SUBMITTED`, `QUEUED`, `PRE_BUILD`, `POST_BUILD` y `FINALIZING` también terminaron en
+*Succeeded*, cada una en menos de un segundo.
+
+Extracto del registro en CloudWatch (`/aws/codebuild/blacklist-devops-ci-build`):
+
+```text
+Selecting 'python' runtime version '3.13' based on manual selections...
+Running command pip install -r requirements-dev.txt
+Phase complete: INSTALL State: SUCCEEDED
+Running command python -m pytest -q --cov=app
+coverage: platform linux, python 3.13.16-final-0
+TOTAL                                                                 290      0   100%
+97 passed in 0.77s
+Running command python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
+Generado dist/app-b0e9d03.zip con 31 archivos.
+Phase complete: BUILD State: SUCCEEDED
+Phase complete: UPLOAD_ARTIFACTS State: SUCCEEDED
+```
+
+En esta ejecución el `buildspec.yml` todavía verificaba `COMMIT_ID` antes de las pruebas; el ajuste del
+pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado.
+
+![Figura 6.4. Fases del build con su duración](capturas/entrega-2/2.6-codebuild-fases.png)
+
+![Figura 6.5. Registro del build: instalación, pruebas y cobertura con Python 3.13.16](capturas/entrega-2/2.7-codebuild-registro-pruebas.png)
+
+![Figura 6.6. Registro del build: contenido del paquete y subida del artefacto](capturas/entrega-2/2.7-codebuild-registro-paquete.png)
+
+### 6.3 Artefacto
+
+CodePipeline guardó la salida del build en el bucket del proyecto como
+`blacklist-devops-ci-/BuildArtif/QZJkTHW` (8 191 bytes). Ese objeto contiene el paquete
+`app-b0e9d03.zip`; se descargó con la CLI y se revisó:
+
+| Verificación | Resultado |
+|---|---|
+| Paquete | `app-b0e9d03.zip`, 11 040 bytes, 31 archivos |
+| `VERSION` | `b0e9d03`, igual a la etiqueta del commit |
+| Contenido en la raíz | `.ebextensions/`, `Procfile`, `VERSION`, `app/`, `application.py` y `requirements.txt` |
+| Archivos que no deben ir | Ninguno: sin `tests/`, `docs/`, `scripts/`, `postman/`, `.env` ni bases de datos locales |
+
+![Figura 6.7. Artefacto del build exitoso en el bucket de S3](capturas/entrega-2/2.7-s3-artefacto.png)
+
+Fuera del pipeline, el paquete se extrajo de ese objeto, se subió como versión `b0e9d03` de la
+aplicación y se desplegó en `Blacklist-devops-env`: el despliegue tardó 54 segundos, las tres instancias
+quedaron con salud *Ok* y `/ping` responde `{"version": "b0e9d03"}`. Contra ese entorno, la colección de
+Postman pasó 22 de 22 pruebas.
+
+![Figura 6.8. /ping responde la versión del artefacto desplegado](capturas/entrega-2/2.11-ping-version.png)
+
+### 6.4 Hallazgos
+
+1. **El disparo por *push* funciona.** El pipeline inició 5 segundos después del *merge* en `main`, sin
+   intervención manual.
+2. **El build es corto y casi todo su tiempo es la instalación.** De 30 segundos, 19 son la fase
+   `INSTALL` (`pip install` sin caché); las pruebas y el empaquetado tardan menos de un segundo cada uno.
+   Para el tamaño de este proyecto no hace falta caché.
+3. **Python 3.13 está disponible en la imagen administrada.** `runtime-versions` resolvió Python
+   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk.
+4. **Las pruebas corren sin servicios externos.** El proyecto de CodeBuild no define la cadena de
+   conexión a la base ni secretos: la suite usó SQLite en memoria.
+5. **El paquete queda dentro del objeto del pipeline.** CodePipeline guarda la salida con un nombre
+   generado (`BuildArtif/QZJkTHW`) y la cifra con la clave administrada de S3 (`aws:kms`), aunque el
+   cifrado por defecto del bucket es SSE-S3. Para desplegarlo hay que extraer `app-b0e9d03.zip` primero.
+6. **La versión en ejecución se puede rastrear hasta el commit.** `/ping` devuelve `b0e9d03`: del
+   entorno se llega al build, a la ejecución del pipeline y al pull request que la originó.
+7. **Hubo una ejecución fallida previa, esperada.** La ejecución de arranque del pipeline (24 de octubre,
+   9:06) falló al descargar el origen porque `main` todavía no tenía `buildspec.yml`. No es la ejecución
+   fallida de la sección 7.
 
 ## 7. Pipeline fallido
 
-[PENDIENTE: tarea 3.5 (#121).]
+Cubre el punto 2 del documento (10 %): una ejecución del pipeline que falla en la fase de pruebas y no
+genera artefacto. Todas las horas están en UTC-05:00 (Colombia).
+
+### 7.1 Qué se provocó
+
+Se creó la rama temporal `test/build-fallido` desde `dev` con una prueba que falla a propósito:
+`test_intentional_failure_for_the_pipeline`, en `tests/test_ping.py`, espera un error 500 de `GET /ping`,
+que responde 200. El 25 de octubre de 2026 a las 11:47:18 se abrió el pull request #160 hacia `dev`,
+titulado *NO FUSIONAR*, solo para disparar el pipeline. A las 12:08:15 se cerró sin fusionar y se
+eliminó la rama: la prueba rota nunca llegó a `dev` ni a `main`.
+
+Se usó un pull request y no un build lanzado a mano por dos razones. El proyecto de CodeBuild recibe el
+código solo desde el pipeline y su rol no tiene acceso a la conexión de GitHub, así que no puede
+construir una rama por sí solo. Además, el punto 2 del documento pide una ejecución fallida del
+pipeline, no un build suelto.
+
+| Dato | Valor |
+|---|---|
+| Commit construido | `c423bff171a52fb5017bbf7fb532c631b954c242` (`c423bff`), en `test/build-fallido` |
+| Ejecución del pipeline | `69f3a6bb-3509-4e5d-8a91-38a667a90e64`, **Failed** |
+| Disparo | Pull request #160 hacia `dev`, evento `PULL_REQUEST_CREATED`, 5 segundos después de abrirlo |
+| Duración del pipeline | 38 segundos (11:47:22 a 11:48:01) |
+| Etapas | Source **Succeeded** en 6 segundos; Build **Failed** |
+| Build de CodeBuild | Build número 3, `blacklist-devops-ci-build:fc926738-0b5c-4713-ad5b-5dc17ffdf417`, **FAILED**, iniciado por el pipeline |
+| Duración del build | 25 segundos (11:47:29 a 11:47:55) |
+| Pruebas | 98 recopiladas: **1 fallida y 97 aprobadas**; cobertura de `app/` del 100 % |
+| Artefacto | **Ninguno** |
+
+![Figura 7.1. Pull request #160, marcado como no fusionar, con el commit c423bff](capturas/entrega-2/2.9-github-pr.png)
+
+![Figura 7.2. Detalle del disparo: pull request 160, rama de origen, rama de destino y commit](capturas/entrega-2/2.9-pipeline-disparo-pr.png)
+
+![Figura 7.3. Ejecución del pipeline: Source correcta y Build fallida](capturas/entrega-2/2.9-pipeline-ejecucion.png)
+
+### 7.2 Dónde falló y por qué
+
+| Fase del build | Estado | Duración |
+|---|---|---|
+| `PROVISIONING` | Succeeded | 3 s |
+| `DOWNLOAD_SOURCE` | Succeeded | 2 s |
+| `INSTALL` | Succeeded | 16 s |
+| `BUILD` | **Failed** | 2 s |
+| `POST_BUILD` | Succeeded | < 1 s |
+| `UPLOAD_ARTIFACTS` | **Failed** | < 1 s |
+
+La etapa Build del pipeline informa el motivo:
+
+```text
+Build terminated with state: FAILED. Phase: BUILD, Code: COMMAND_EXECUTION_ERROR,
+Message: Error while executing command: python -m pytest -q --cov=app. Reason: exit status 1
+```
+
+Extracto del registro en CloudWatch:
+
+```text
+Running command python -m pytest -q --cov=app
+    def test_intentional_failure_for_the_pipeline(client):
+        response = client.get(constants.PING_PATH)
+>       assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+E       assert 200 == <HTTPStatus.INTERNAL_SERVER_ERROR: 500>
+tests/test_ping.py:62: AssertionError
+FAILED tests/test_ping.py::test_intentional_failure_for_the_pipeline - assert...
+1 failed, 97 passed in 0.77s
+Phase complete: BUILD State: FAILED
+Expanding dist/app-*.zip
+Phase complete: UPLOAD_ARTIFACTS State: FAILED
+Phase context status code: CLIENT_ERROR Message: no matching artifact paths found
+```
+
+Como `pytest` termina con código de salida 1, CodeBuild cancela los comandos restantes de la fase
+`build`: el script de empaquetado nunca se ejecuta y `dist/app-*.zip` no existe. Por eso la fase
+`UPLOAD_ARTIFACTS` falla: no encuentra el paquete declarado en el `buildspec.yml`.
+
+![Figura 7.4. Fases del build: BUILD y UPLOAD_ARTIFACTS en Failed](capturas/entrega-2/2.9-codebuild-fases.png)
+
+![Figura 7.5. Registro del build: 1 failed, 97 passed y no matching artifact paths found](capturas/entrega-2/2.9-registro-fallo.png)
+
+### 7.3 Sin artefacto y sin cambios en las ramas
+
+Después de la ejecución, `blacklist-devops-ci-/BuildArtif/` seguía teniendo un solo objeto: el del build
+exitoso del 24 de octubre (`QZJkTHW`). La ubicación de salida que informa el build
+(`BuildArtif/krWSeNK`) es solo el destino que reservó el pipeline: el objeto no existe. El único objeto
+nuevo en el bucket es el código de origen que la etapa Source deja como entrada del build
+(`SourceArti/JdFZGO1`), que no es un paquete de la aplicación.
+
+`dev` y `main` quedaron intactos (`241a309` y `b0e9d03`), porque el pull request se cerró sin fusionar.
+
+![Figura 7.6. Bucket: BuildArtif con un solo objeto, el del build exitoso](capturas/entrega-2/2.9-s3-sin-artefacto.png)
+
+### 7.4 Comparación con la ejecución exitosa
+
+| | Exitosa (sección 6) | Fallida |
+|---|---|---|
+| Disparo | *Push* a `main` (`b0e9d03`) | Pull request #160 hacia `dev` (`c423bff`) |
+| Pipeline | *Succeeded*, 38 s | *Failed*, 38 s |
+| Build | Número 2, 30 s | Número 3, 25 s |
+| Pruebas | 97 aprobadas | 1 fallida y 97 aprobadas |
+| Fase `BUILD` | *Succeeded* | *Failed* |
+| Artefacto | `app-b0e9d03.zip` en el bucket | Ninguno |
+
+![Figura 7.7. Historial del pipeline: la ejecución fallida junto a la exitosa](capturas/entrega-2/2.9-pipeline-historial.png)
+
+### 7.5 Hallazgos
+
+1. **El fallo ocurrió en la fase correcta.** El `buildspec.yml` verifica `COMMIT_ID` después de
+   `pytest`, así que la causa del fallo es la prueba y no una variable ausente.
+2. **El registro identifica la prueba, el archivo y la línea.** El nombre de la prueba deja claro que el
+   fallo es deliberado y no una prueba real del contrato rota.
+3. **Un cambio con pruebas rotas no produce un paquete desplegable.** El empaquetado nunca se ejecutó y
+   no quedó ningún artefacto nuevo, que es el objetivo de la integración continua.
+4. **El mismo pipeline da los dos resultados.** Sin cambiar configuración ni lanzar nada a mano, el
+   disparador de *push* produjo el build exitoso y el de pull request, el fallido.
+5. **El disparador de pull request se comportó distinto en dos intentos.** Con el #160 hacia `dev` se
+   inició la ejecución; con el #156 hacia `main`, abierto cuando el pipeline ya existía, no se inició.
+   El siguiente pull request hacia `main`, el #164, sí la inició (`901438a7`). La causa del caso del #156
+   no está identificada.
+6. **La ubicación de salida del build no es un artefacto.** El build informa `BuildArtif/krWSeNK`, pero
+   ese objeto no existe porque la subida falló; conviene no confundirlo con un paquete generado.
 
 ## 8. Limitaciones y decisiones
 
