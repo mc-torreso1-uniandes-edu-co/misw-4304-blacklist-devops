@@ -150,7 +150,227 @@ iniciaba el build, y el enunciado pide que lo haga cada commit.
 
 ## 4. Configuración en AWS
 
-[PENDIENTE: tarea 3.2 (#118).]
+Cubre el punto 2 de la configuración (10 %): el proyecto de AWS CodeBuild creado y configurado, con los
+recursos que lo sostienen. Todo está en la cuenta `253041091381` y en la región `us-east-2` (Ohio), bajo
+el plan gratuito de AWS: ninguna configuración activó características avanzadas ni cambió de plan. Los
+recursos se crearon en octubre de 2026: el bucket y los roles el 22, el proyecto de CodeBuild el 23 y el
+pipeline el 24; la conexión ya estaba disponible el 21. El bucket, la conexión y los roles se crearon en
+la consola de AWS, y el proyecto de CodeBuild y el pipeline con la CLI de la misma cuenta, verificados
+después en la consola. Los bloques de comandos de esta sección son el equivalente en la CLI de lo que se
+hizo en la consola: desde una terminal local llevan `--profile blacklist`, el perfil de la cuenta del
+proyecto, y en AWS CloudShell no hace falta.
+
+### 4.1 Orden de creación y dependencias
+
+| Paso | Recurso | Nombre | Depende de |
+|---|---|---|---|
+| 1 | Bucket de Amazon S3 | `blacklist-devops-ci-artifacts-253041091381` | Nada |
+| 2 | Conexión de GitHub (AWS CodeConnections) | `blacklist-devops-github` | Nada; la autoriza la persona dueña del repositorio |
+| 3 | Roles de IAM | `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` | El bucket y el ARN de la conexión |
+| 4 | Proyecto de AWS CodeBuild | `blacklist-devops-ci-build` | El rol de CodeBuild |
+| 5 | Pipeline de AWS CodePipeline | `blacklist-devops-ci-pipeline` | El bucket, el rol de CodePipeline, la conexión y el proyecto |
+
+La conexión se crea antes que los roles porque la política del rol de CodePipeline usa su ARN, que lleva
+un identificador que AWS genera en ese momento: si la conexión se reemplaza, el ARN cambia. Los ARN del
+proyecto y del pipeline se forman con su nombre, así que sus políticas se pueden escribir de antemano.
+Ese orden no se respetó en el primer intento: la conexión se creó con un espacio al final del nombre y
+hubo que eliminarla y crearla otra vez con el mismo nombre. Las capturas de esta sección son de la
+conexión vigente.
+
+### 4.2 Bucket de artefactos
+
+| Propiedad | Valor |
+|---|---|
+| Nombre | `blacklist-devops-ci-artifacts-253041091381` |
+| Región | `us-east-2` (Ohio) |
+| Tipo | *General purpose*, en el espacio de nombres global |
+| Propiedad de los objetos | `Bucket owner enforced`, con las listas de control de acceso deshabilitadas |
+| Bloqueo del acceso público | Activado, con las cuatro opciones en `true` |
+| Cifrado predeterminado | `AES256`, cifrado del lado del servidor con claves administradas por Amazon S3 (SSE-S3) |
+| Bucket Key | Deshabilitado: con SSE-S3 no cambia el cifrado, solo las llamadas a AWS KMS |
+| Versionado | Deshabilitado |
+| Política del bucket | Ninguna: el acceso se controla con los roles |
+| Uso | Guardar el objeto que CodePipeline produce con el paquete de cada build |
+
+El nombre quedó fijado en el diseño con el identificador de la cuenta. Se eligió el espacio de nombres
+global porque el regional agrega un sufijo al nombre. El bucket es privado: el acceso público está
+bloqueado en las cuatro opciones, no tiene política y el cifrado con llaves del cliente (SSE-C) está
+bloqueado. Los objetos que escribe el pipeline aparecen cifrados con `aws:kms` porque el proyecto de
+CodeBuild cifra sus artefactos con la clave administrada `aws/s3` (figura 4.11); eso no contradice el
+cifrado por defecto del bucket, que sigue siendo SSE-S3.
+
+Equivalente en la CLI:
+
+```bash
+aws s3api create-bucket --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --create-bucket-configuration LocationConstraint=us-east-2
+
+aws s3api put-public-access-block --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+
+aws s3api put-bucket-encryption --region us-east-2 \
+  --bucket blacklist-devops-ci-artifacts-253041091381 \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":false}]}'
+```
+
+![Figura 4.1. Bucket de artefactos recién creado, vacío, en la región us-east-2](capturas/entrega-2/1.4-bucket-creado.png)
+
+![Figura 4.2. Permisos del bucket: bloqueo total del acceso público y sin política](capturas/entrega-2/1.4-permisos-acceso-publico.png)
+
+![Figura 4.3. Cifrado predeterminado SSE-S3, con Bucket Key deshabilitado y el cifrado con llaves del cliente bloqueado](capturas/entrega-2/1.4-cifrado-estado-final.png)
+
+### 4.3 Conexión con GitHub
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-github` |
+| Proveedor | GitHub, por la aplicación *AWS Connector for GitHub* |
+| ARN | `arn:aws:codeconnections:us-east-2:253041091381:connection/78ec2a5d-2f14-4972-bc66-b54a9571b2f9` |
+| Estado | `AVAILABLE` |
+| Acceso en GitHub | *Only select repositories*: solo `mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops` |
+| Credenciales guardadas | Ninguna: sin token personal y sin llave SSH |
+
+La conexión evita guardar un token personal en el repositorio, en una variable de entorno o en la
+configuración del pipeline: AWS lee el código con una aplicación de GitHub que la persona dueña del
+repositorio autoriza en el navegador, y esa autorización queda limitada a un repositorio. La CLI crea la
+conexión en estado *Pending*; solo la autorización en GitHub la deja *Available*.
+
+Equivalente en la CLI:
+
+```bash
+aws codeconnections create-connection --region us-east-2 \
+  --provider-type GitHub --connection-name blacklist-devops-github
+```
+
+![Figura 4.4. Aplicación de GitHub limitada a un solo repositorio](capturas/entrega-2/1.6-github-acceso-repositorio.png)
+
+![Figura 4.5. Conexión blacklist-devops-github en estado Available, con su ARN](capturas/entrega-2/1.6-conexion-detalle.png)
+
+### 4.4 Roles de servicio
+
+| Dato | `blacklist-devops-codebuild-role` | `blacklist-devops-codepipeline-role` |
+|---|---|---|
+| Servicio que lo asume | `codebuild.amazonaws.com` | `codepipeline.amazonaws.com` |
+| Condición de confianza | `aws:SourceAccount = 253041091381` | `aws:SourceAccount = 253041091381` |
+| Política | En línea, `acceso-minimo-ci` | En línea, `acceso-minimo-ci` |
+| Permisos | Escribir en el grupo de CloudWatch del proyecto; leer y escribir objetos del bucket | Leer y escribir objetos del bucket; usar la conexión de GitHub; lanzar y consultar el proyecto de CodeBuild |
+| Políticas administradas | Ninguna | Ninguna |
+
+Ninguno de los dos roles tiene permisos de administrador y ninguna de sus sentencias usa `*` como acción:
+los recursos son ARN concretos del bucket, del proyecto y de la conexión, sin comodines de cuenta.
+Tampoco hay llaves de acceso, porque los servicios asumen el rol con credenciales temporales de STS. El
+rol de CodeBuild no tiene permiso sobre la conexión de GitHub porque el pipeline le entrega el código ya
+descargado, como un ZIP.
+
+Antes de ejecutar los comandos, la relación de confianza y la política de cada rol se guardan en un
+archivo JSON. Equivalente en la CLI:
+
+```bash
+aws iam create-role --role-name blacklist-devops-codebuild-role \
+  --assume-role-policy-document file://trust-codebuild.json
+aws iam put-role-policy --role-name blacklist-devops-codebuild-role \
+  --policy-name acceso-minimo-ci --policy-document file://policy-codebuild.json
+aws iam create-role --role-name blacklist-devops-codepipeline-role \
+  --assume-role-policy-document file://trust-codepipeline.json
+aws iam put-role-policy --role-name blacklist-devops-codepipeline-role \
+  --policy-name acceso-minimo-ci --policy-document file://policy-codepipeline.json
+```
+
+![Figura 4.6. Los dos roles de servicio del proyecto en IAM](capturas/entrega-2/1.5-roles-lista.png)
+
+![Figura 4.7. Política acceso-minimo-ci del rol de CodeBuild](capturas/entrega-2/1.5-codebuild-politica.png)
+
+![Figura 4.8. Política del rol de CodePipeline, con la conexión y el proyecto](capturas/entrega-2/1.5-codepipeline-politica.png)
+
+### 4.5 Proyecto de CodeBuild
+
+Es el recurso que ejecuta las pruebas y genera el artefacto: el que sostiene este punto de la
+configuración.
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-ci-build` |
+| ARN | `arn:aws:codebuild:us-east-2:253041091381:project/blacklist-devops-ci-build` |
+| Proveedor del origen | AWS CodePipeline: el código llega de la etapa de origen del pipeline |
+| Artefactos | AWS CodePipeline: el paquete vuelve al almacén del pipeline, en el bucket de artefactos |
+| Archivo de construcción | `buildspec.yml`, en la raíz del repositorio (nombre por defecto) |
+| Imagen | `aws/codebuild/amazonlinux-x86_64-standard:6.0`, sobre Amazon Linux 2023 |
+| Tipo de entorno y cómputo | Contenedor Linux sobre EC2, `BUILD_GENERAL1_SMALL`: 2 CPU virtuales y 4 GiB de memoria |
+| Modo privilegiado | Desactivado: solo se necesita para construir imágenes de contenedor |
+| Variables de entorno | Ninguna: `APP_ENV` y las demás viven en el `buildspec.yml`, y `COMMIT_ID` lo entrega el pipeline |
+| Rol de servicio | `blacklist-devops-codebuild-role` |
+| Registros | CloudWatch Logs activado, grupo `/aws/codebuild/blacklist-devops-ci-build` |
+| Caché | Sin caché |
+| Tiempo de espera | 60 minutos, el valor por defecto |
+| Compilaciones públicas | Deshabilitadas |
+
+El origen es CodePipeline porque el proyecto no necesita acceso propio a GitHub: recibe el código de la
+etapa de origen, que es la que usa la conexión. La imagen es la que el equipo eligió por ser la más
+reciente de Amazon Linux disponible. El cómputo es el más pequeño, porque las pruebas usan SQLite en
+memoria y el paquete es un `.zip` de 11 KB. No se configuraron variables de entorno en el proyecto para
+no repartir configuración ni secretos: lo que el build necesita está en el repositorio, y el
+identificador del commit lo inyecta el pipeline.
+
+La página del proyecto muestra un aviso azul que indica que el sistema operativo anfitrión es Amazon Linux
+2 y recomienda pasar a Amazon Linux 2023. Es informativo y no afecta el build: la imagen del entorno ya es
+`standard:6.0`, que resuelve Python 3.13.16 (sección 6). No es el aviso de características avanzadas del
+plan gratuito, que no apareció en ninguna pantalla.
+
+Equivalente en la CLI:
+
+```bash
+aws codebuild create-project --region us-east-2 \
+  --name blacklist-devops-ci-build \
+  --source type=CODEPIPELINE --artifacts type=CODEPIPELINE \
+  --environment type=LINUX_CONTAINER,computeType=BUILD_GENERAL1_SMALL,image=aws/codebuild/amazonlinux-x86_64-standard:6.0 \
+  --service-role arn:aws:iam::253041091381:role/blacklist-devops-codebuild-role \
+  --logs-config cloudWatchLogs={status=ENABLED}
+```
+
+![Figura 4.9. Configuración del proyecto: origen AWS CodePipeline y rol de servicio](capturas/entrega-2/1.7-proyecto-configuracion.png)
+
+![Figura 4.10. Entorno del proyecto: imagen standard:6.0, contenedor Linux, EC2 con 2 CPU y 4 GiB, sin variables de entorno](capturas/entrega-2/1.7-proyecto-entorno.png)
+
+![Figura 4.11. Artefactos y registros del proyecto: sin caché, cifrado con la clave aws/s3 y CloudWatch Logs activado](capturas/entrega-2/1.7-proyecto-registros.png)
+
+### 4.6 Pipeline y verificación
+
+El último recurso es el pipeline `blacklist-devops-ci-pipeline`, de tipo V2 y modo de ejecución `QUEUED`,
+con una etapa de origen en GitHub y una de construcción en CodeBuild. El pipeline entrega a CodeBuild el
+identificador del commit en la variable `COMMIT_ID`, y el artefacto de salida vuelve al bucket de la
+sección 4.2. No tiene etapa de despliegue, porque la entrega excluye el despliegue automatizado: el
+pipeline termina cuando el paquete queda en el bucket. Se crea con un archivo de definición:
+
+```bash
+aws codepipeline create-pipeline --region us-east-2 --cli-input-json file://pipeline.json
+```
+
+Su contenido, los disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la
+sección 5.
+
+Los cinco recursos se comprueban con consultas de solo lectura, que se pueden repetir sin cambiar nada.
+Las de S3, CodeConnections, CodeBuild y CodePipeline llevan `--region us-east-2`:
+
+| Consulta | Resultado esperado |
+|---|---|
+| `aws s3api get-bucket-encryption --bucket blacklist-devops-ci-artifacts-253041091381` | Cifrado `AES256`, con `BucketKeyEnabled` en `false` |
+| `aws s3api get-public-access-block --bucket blacklist-devops-ci-artifacts-253041091381` | Las cuatro opciones de bloqueo en `true` |
+| `aws iam get-role-policy --role-name blacklist-devops-codebuild-role --policy-name acceso-minimo-ci` | La política en línea `acceso-minimo-ci` del rol de CodeBuild |
+| `aws iam get-role-policy --role-name blacklist-devops-codepipeline-role --policy-name acceso-minimo-ci` | La política en línea `acceso-minimo-ci` del rol de CodePipeline |
+| `aws codeconnections list-connections` | `blacklist-devops-github` en estado `AVAILABLE` |
+| `aws codebuild batch-get-projects --names blacklist-devops-ci-build` | Origen y artefactos `CODEPIPELINE`, el rol del proyecto y los registros activados |
+| `aws codepipeline get-pipeline --name blacklist-devops-ci-pipeline` | Tipo `V2`, modo `QUEUED` y los disparadores de Git |
+
+El 27 de octubre de 2026 se ejecutaron por CLI las consultas del bucket, de la conexión, del proyecto y
+del pipeline, y todas devolvieron lo esperado. Los dos roles se comprobaron en la consola, con las figuras
+4.6 a 4.8, y no por CLI. La revisión de las capturas, del 26 de octubre, confirmó que ninguna muestra
+secretos: no hay tokens, contraseñas ni variables de entorno con valores. El número de cuenta y los ARN
+aparecen porque no son secretos, y las políticas de IAM solo contienen nombres y ARN de recursos del
+proyecto.
 
 ## 5. Archivo de construcción y disparo automático
 
