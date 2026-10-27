@@ -146,7 +146,26 @@ iniciaba el build, y el enunciado pide que lo haga cada commit.
 
 ## 3. Enlaces de la entrega
 
-[PENDIENTE: tarea 3.6 (#122).]
+| Recurso | Enlace |
+|---|---|
+| Repositorio de GitHub | https://github.com/mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops |
+| URL del entorno | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com |
+| Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
+| Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
+| Video de sustentación | [PENDIENTE: tarea 4.5 (#130).] |
+
+Notas aclaratorias:
+
+- **Mismos recursos de la Entrega 1.** El repositorio, el entorno, el workspace de Postman y la
+  documentación publicada son los de la Entrega 1; solo el video es nuevo.
+- **Repositorio.** Es privado. Si el tutor necesita acceso, debe suministrar su usuario de GitHub para
+  agregarlo como colaborador.
+- **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
+  mientras se trabaja y se graba el video: para esta entrega se volvió a provisionar el 23 de octubre de
+  2026, con la misma URL, y se apaga después de grabar, así que puede no responder durante la
+  calificación. El pipeline de integración continua no depende del entorno.
+- **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
+  ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 
 ## 4. Configuración en AWS
 
