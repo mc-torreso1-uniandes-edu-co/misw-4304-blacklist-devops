@@ -100,15 +100,19 @@ AWS Elastic Beanstalk · Blacklist-devops-env
 
 **Cuándo se ejecuta.** El pipeline se dispara con cada *push* a `main` (el commit en la rama principal
 que pide el enunciado) y con cada pull request abierto o actualizado hacia `dev` o `main`, para validar
-los cambios antes de fusionarlos. Los cambios que solo tocan documentación (`docs/**`, `postman/**` o
-archivos `.md`) no lo disparan.
+los cambios antes de fusionarlos. El *push* a `main` no excluye ningún archivo, de modo que todo commit en
+la rama principal inicia el build; en los pull requests se omiten los cambios que solo tocan documentación
+(`docs/**`, `postman/**` o archivos `.md`).
 
 Los dos disparadores están comprobados, sin intervención manual: el *merge* de la promoción `b0e9d03` en
 `main` inició la ejecución exitosa 5 segundos después (sección 6), y el pull request #160 de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
-causa identificada; su revisión sigue en la tarea 1.11 (#103), junto con la propuesta de quitar la
-exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actualiza este párrafo.
+causa identificada; el siguiente pull request hacia `main`, el #164, sí la inició.
+
+El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
+quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
+iniciaba el build, y el enunciado pide que lo haga cada commit.
 
 **Flujo de una ejecución:**
 
