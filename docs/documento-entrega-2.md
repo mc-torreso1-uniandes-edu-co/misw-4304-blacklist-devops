@@ -49,10 +49,10 @@ minúsculas y sin espacios al guardar y al consultar.
 **Pruebas unitarias.** La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`. Cada
 endpoint tiene sus escenarios: respuestas correctas, validaciones, duplicados, normalización del email,
 las cinco variantes de credencial inválida (401) y que `/ping` no consulta la base. Las pruebas usan
-SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. La matriz de
-escenarios por endpoint, con la prueba que cubre cada uno, está en
-`docs/pruebas/2.1-escenarios-por-endpoint.md`, y la verificación de que la suite corre sin cambios en un
-entorno limpio como el de CodeBuild, en `docs/pruebas/2.4-pruebas-ci.md`.
+SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. Antes de configurar
+el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni base de datos, como
+el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por archivo y en orden
+inverso.
 
 ## 2. Arquitectura de la integración continua
 
@@ -137,10 +137,6 @@ exclusión de rutas en el *push* a `main`. Si la configuración cambia, se actua
   `buildspec.yml` lo declara en su sección `artifacts` y CodePipeline lo publica en su almacén, sin
   llamadas a la CLI de AWS desde el build. El diseño inicial proponía copiar además el paquete con su
   nombre al bucket; esa opción sigue en revisión en la tarea 1.11 (#103).
-
-El diseño completo, con los permisos de cada recurso, está en `docs/ci/1.1-diseno-pipeline.md`; la
-configuración real de cada recurso, en `docs/ci/1.7-proyecto-codebuild.md` y `docs/ci/1.11-pipeline.md`.
-
 ## 3. Enlaces de la entrega
 
 [PENDIENTE: tarea 3.6 (#122).]
@@ -155,11 +151,234 @@ configuración real de cada recurso, en `docs/ci/1.7-proyecto-codebuild.md` y `d
 
 ## 6. Pipeline exitoso
 
-[PENDIENTE: tarea 3.4 (#120).]
+Cubre el punto 1 del documento (10 %) y respalda el punto 4 de la configuración (15 %): un commit en la
+rama principal inició el pipeline sin intervención manual, CodeBuild ejecutó las pruebas y generó el
+artefacto. Todas las horas están en UTC-05:00 (Colombia).
+
+### 6.1 Qué se ejecutó
+
+El 24 de octubre de 2026 se fusionó en `main` la promoción de `dev` (pull request #156), que llevó por
+primera vez el `buildspec.yml` a la rama principal. El *merge* creó el commit `b0e9d03`, y ese *push* a
+`main` disparó la ejecución.
+
+| Dato | Valor |
+|---|---|
+| Commit en `main` | `b0e9d0397c05ba9b66fdd69161efd3619265f97d` (`b0e9d03`), 11:19:44 |
+| Ejecución del pipeline | `ff3146a4-74b7-458f-927e-980fee5eb56d`, **Succeeded** |
+| Disparo | *Push* a `main`, 5 segundos después del *merge*, sin intervención manual |
+| Duración del pipeline | 38 segundos (11:19:49 a 11:20:27) |
+| Build de CodeBuild | Build número 2, `blacklist-devops-ci-build:de0d4f11-4626-44a5-b969-3987f6ac0c91`, **SUCCEEDED**, iniciado por `codepipeline/blacklist-devops-ci-pipeline` |
+| Duración del build | 30 segundos (11:19:56 a 11:20:26) |
+| Entorno del build | Imagen `aws/codebuild/amazonlinux-x86_64-standard:6.0`, Python **3.13.16** |
+| Variable `COMMIT_ID` | El hash completo del commit, entregado por el pipeline |
+| Pruebas | **97 aprobadas**, 0 fallidas; cobertura de `app/` del **100 %** |
+| Paquete | `app-b0e9d03.zip`, 31 archivos, `VERSION = b0e9d03` |
+
+![Figura 6.1. Commit de la promoción en main (PR #156 fusionado)](capturas/entrega-2/2.6-github-commit-main.png)
+
+![Figura 6.2. Historial del pipeline: la ejecución disparada por el commit b0e9d039 en main, Succeeded en 38 s](capturas/entrega-2/2.6-pipeline-historial.png)
+
+![Figura 6.3. Ejecución del pipeline: etapas Source y Build correctas con el commit b0e9d039](capturas/entrega-2/2.6-pipeline-ejecucion.png)
+
+### 6.2 Fases y pruebas
+
+| Fase del build | Estado | Duración |
+|---|---|---|
+| `PROVISIONING` | Succeeded | 3 s |
+| `DOWNLOAD_SOURCE` | Succeeded | 2 s |
+| `INSTALL` | Succeeded | 19 s |
+| `BUILD` | Succeeded | 3 s |
+| `UPLOAD_ARTIFACTS` | Succeeded | < 1 s |
+
+Las fases `SUBMITTED`, `QUEUED`, `PRE_BUILD`, `POST_BUILD` y `FINALIZING` también terminaron en
+*Succeeded*, cada una en menos de un segundo.
+
+Extracto del registro en CloudWatch (`/aws/codebuild/blacklist-devops-ci-build`):
+
+```text
+Selecting 'python' runtime version '3.13' based on manual selections...
+Running command pip install -r requirements-dev.txt
+Phase complete: INSTALL State: SUCCEEDED
+Running command python -m pytest -q --cov=app
+coverage: platform linux, python 3.13.16-final-0
+TOTAL                                                                 290      0   100%
+97 passed in 0.77s
+Running command python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
+Generado dist/app-b0e9d03.zip con 31 archivos.
+Phase complete: BUILD State: SUCCEEDED
+Phase complete: UPLOAD_ARTIFACTS State: SUCCEEDED
+```
+
+En esta ejecución el `buildspec.yml` todavía verificaba `COMMIT_ID` antes de las pruebas; el ajuste del
+pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado.
+
+![Figura 6.4. Fases del build con su duración](capturas/entrega-2/2.6-codebuild-fases.png)
+
+![Figura 6.5. Registro del build: instalación, pruebas y cobertura con Python 3.13.16](capturas/entrega-2/2.7-codebuild-registro-pruebas.png)
+
+![Figura 6.6. Registro del build: contenido del paquete y subida del artefacto](capturas/entrega-2/2.7-codebuild-registro-paquete.png)
+
+### 6.3 Artefacto
+
+CodePipeline guardó la salida del build en el bucket del proyecto como
+`blacklist-devops-ci-/BuildArtif/QZJkTHW` (8 191 bytes). Ese objeto contiene el paquete
+`app-b0e9d03.zip`; se descargó con la CLI y se revisó:
+
+| Verificación | Resultado |
+|---|---|
+| Paquete | `app-b0e9d03.zip`, 11 040 bytes, 31 archivos |
+| `VERSION` | `b0e9d03`, igual a la etiqueta del commit |
+| Contenido en la raíz | `.ebextensions/`, `Procfile`, `VERSION`, `app/`, `application.py` y `requirements.txt` |
+| Archivos que no deben ir | Ninguno: sin `tests/`, `docs/`, `scripts/`, `postman/`, `.env` ni bases de datos locales |
+
+![Figura 6.7. Artefacto del build exitoso en el bucket de S3](capturas/entrega-2/2.7-s3-artefacto.png)
+
+Fuera del pipeline, el paquete se extrajo de ese objeto, se subió como versión `b0e9d03` de la
+aplicación y se desplegó en `Blacklist-devops-env`: el despliegue tardó 54 segundos, las tres instancias
+quedaron con salud *Ok* y `/ping` responde `{"version": "b0e9d03"}`. Contra ese entorno, la colección de
+Postman pasó 22 de 22 pruebas.
+
+![Figura 6.8. /ping responde la versión del artefacto desplegado](capturas/entrega-2/2.11-ping-version.png)
+
+### 6.4 Hallazgos
+
+1. **El disparo por *push* funciona.** El pipeline inició 5 segundos después del *merge* en `main`, sin
+   intervención manual.
+2. **El build es corto y casi todo su tiempo es la instalación.** De 30 segundos, 19 son la fase
+   `INSTALL` (`pip install` sin caché); las pruebas y el empaquetado tardan menos de un segundo cada uno.
+   Para el tamaño de este proyecto no hace falta caché.
+3. **Python 3.13 está disponible en la imagen administrada.** `runtime-versions` resolvió Python
+   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk.
+4. **Las pruebas corren sin servicios externos.** El proyecto de CodeBuild no define la cadena de
+   conexión a la base ni secretos: la suite usó SQLite en memoria.
+5. **El paquete queda dentro del objeto del pipeline.** CodePipeline guarda la salida con un nombre
+   generado (`BuildArtif/QZJkTHW`) y la cifra con la clave administrada de S3 (`aws:kms`), aunque el
+   cifrado por defecto del bucket es SSE-S3. Para desplegarlo hay que extraer `app-b0e9d03.zip` primero.
+6. **La versión en ejecución se puede rastrear hasta el commit.** `/ping` devuelve `b0e9d03`: del
+   entorno se llega al build, a la ejecución del pipeline y al pull request que la originó.
+7. **Hubo una ejecución fallida previa, esperada.** La ejecución de arranque del pipeline (24 de octubre,
+   9:06) falló al descargar el origen porque `main` todavía no tenía `buildspec.yml`. No es la ejecución
+   fallida de la sección 7.
 
 ## 7. Pipeline fallido
 
-[PENDIENTE: tarea 3.5 (#121).]
+Cubre el punto 2 del documento (10 %): una ejecución del pipeline que falla en la fase de pruebas y no
+genera artefacto. Todas las horas están en UTC-05:00 (Colombia).
+
+### 7.1 Qué se provocó
+
+Se creó la rama temporal `test/build-fallido` desde `dev` con una prueba que falla a propósito:
+`test_intentional_failure_for_the_pipeline`, en `tests/test_ping.py`, espera un error 500 de `GET /ping`,
+que responde 200. El 25 de octubre de 2026 a las 11:47:18 se abrió el pull request #160 hacia `dev`,
+titulado *NO FUSIONAR*, solo para disparar el pipeline. A las 12:08:15 se cerró sin fusionar y se
+eliminó la rama: la prueba rota nunca llegó a `dev` ni a `main`.
+
+Se usó un pull request y no un build lanzado a mano por dos razones. El proyecto de CodeBuild recibe el
+código solo desde el pipeline y su rol no tiene acceso a la conexión de GitHub, así que no puede
+construir una rama por sí solo. Además, el punto 2 del documento pide una ejecución fallida del
+pipeline, no un build suelto.
+
+| Dato | Valor |
+|---|---|
+| Commit construido | `c423bff171a52fb5017bbf7fb532c631b954c242` (`c423bff`), en `test/build-fallido` |
+| Ejecución del pipeline | `69f3a6bb-3509-4e5d-8a91-38a667a90e64`, **Failed** |
+| Disparo | Pull request #160 hacia `dev`, evento `PULL_REQUEST_CREATED`, 5 segundos después de abrirlo |
+| Duración del pipeline | 38 segundos (11:47:22 a 11:48:01) |
+| Etapas | Source **Succeeded** en 6 segundos; Build **Failed** |
+| Build de CodeBuild | Build número 3, `blacklist-devops-ci-build:fc926738-0b5c-4713-ad5b-5dc17ffdf417`, **FAILED**, iniciado por el pipeline |
+| Duración del build | 25 segundos (11:47:29 a 11:47:55) |
+| Pruebas | 98 recopiladas: **1 fallida y 97 aprobadas**; cobertura de `app/` del 100 % |
+| Artefacto | **Ninguno** |
+
+![Figura 7.1. Pull request #160, marcado como no fusionar, con el commit c423bff](capturas/entrega-2/2.9-github-pr.png)
+
+![Figura 7.2. Detalle del disparo: pull request 160, rama de origen, rama de destino y commit](capturas/entrega-2/2.9-pipeline-disparo-pr.png)
+
+![Figura 7.3. Ejecución del pipeline: Source correcta y Build fallida](capturas/entrega-2/2.9-pipeline-ejecucion.png)
+
+### 7.2 Dónde falló y por qué
+
+| Fase del build | Estado | Duración |
+|---|---|---|
+| `PROVISIONING` | Succeeded | 3 s |
+| `DOWNLOAD_SOURCE` | Succeeded | 2 s |
+| `INSTALL` | Succeeded | 16 s |
+| `BUILD` | **Failed** | 2 s |
+| `POST_BUILD` | Succeeded | < 1 s |
+| `UPLOAD_ARTIFACTS` | **Failed** | < 1 s |
+
+La etapa Build del pipeline informa el motivo:
+
+```text
+Build terminated with state: FAILED. Phase: BUILD, Code: COMMAND_EXECUTION_ERROR,
+Message: Error while executing command: python -m pytest -q --cov=app. Reason: exit status 1
+```
+
+Extracto del registro en CloudWatch:
+
+```text
+Running command python -m pytest -q --cov=app
+    def test_intentional_failure_for_the_pipeline(client):
+        response = client.get(constants.PING_PATH)
+>       assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+E       assert 200 == <HTTPStatus.INTERNAL_SERVER_ERROR: 500>
+tests/test_ping.py:62: AssertionError
+FAILED tests/test_ping.py::test_intentional_failure_for_the_pipeline - assert...
+1 failed, 97 passed in 0.77s
+Phase complete: BUILD State: FAILED
+Expanding dist/app-*.zip
+Phase complete: UPLOAD_ARTIFACTS State: FAILED
+Phase context status code: CLIENT_ERROR Message: no matching artifact paths found
+```
+
+Como `pytest` termina con código de salida 1, CodeBuild cancela los comandos restantes de la fase
+`build`: el script de empaquetado nunca se ejecuta y `dist/app-*.zip` no existe. Por eso la fase
+`UPLOAD_ARTIFACTS` falla: no encuentra el paquete declarado en el `buildspec.yml`.
+
+![Figura 7.4. Fases del build: BUILD y UPLOAD_ARTIFACTS en Failed](capturas/entrega-2/2.9-codebuild-fases.png)
+
+![Figura 7.5. Registro del build: 1 failed, 97 passed y no matching artifact paths found](capturas/entrega-2/2.9-registro-fallo.png)
+
+### 7.3 Sin artefacto y sin cambios en las ramas
+
+Después de la ejecución, `blacklist-devops-ci-/BuildArtif/` seguía teniendo un solo objeto: el del build
+exitoso del 24 de octubre (`QZJkTHW`). La ubicación de salida que informa el build
+(`BuildArtif/krWSeNK`) es solo el destino que reservó el pipeline: el objeto no existe. El único objeto
+nuevo en el bucket es el código de origen que la etapa Source deja como entrada del build
+(`SourceArti/JdFZGO1`), que no es un paquete de la aplicación.
+
+`dev` y `main` quedaron intactos (`241a309` y `b0e9d03`), porque el pull request se cerró sin fusionar.
+
+![Figura 7.6. Bucket: BuildArtif con un solo objeto, el del build exitoso](capturas/entrega-2/2.9-s3-sin-artefacto.png)
+
+### 7.4 Comparación con la ejecución exitosa
+
+| | Exitosa (sección 6) | Fallida |
+|---|---|---|
+| Disparo | *Push* a `main` (`b0e9d03`) | Pull request #160 hacia `dev` (`c423bff`) |
+| Pipeline | *Succeeded*, 38 s | *Failed*, 38 s |
+| Build | Número 2, 30 s | Número 3, 25 s |
+| Pruebas | 97 aprobadas | 1 fallida y 97 aprobadas |
+| Fase `BUILD` | *Succeeded* | *Failed* |
+| Artefacto | `app-b0e9d03.zip` en el bucket | Ninguno |
+
+![Figura 7.7. Historial del pipeline: la ejecución fallida junto a la exitosa](capturas/entrega-2/2.9-pipeline-historial.png)
+
+### 7.5 Hallazgos
+
+1. **El fallo ocurrió en la fase correcta.** El `buildspec.yml` verifica `COMMIT_ID` después de
+   `pytest`, así que la causa del fallo es la prueba y no una variable ausente.
+2. **El registro identifica la prueba, el archivo y la línea.** El nombre de la prueba deja claro que el
+   fallo es deliberado y no una prueba real del contrato rota.
+3. **Un cambio con pruebas rotas no produce un paquete desplegable.** El empaquetado nunca se ejecutó y
+   no quedó ningún artefacto nuevo, que es el objetivo de la integración continua.
+4. **El mismo pipeline da los dos resultados.** Sin cambiar configuración ni lanzar nada a mano, el
+   disparador de *push* produjo el build exitoso y el de pull request, el fallido.
+5. **El disparador de pull request se comportó distinto en dos intentos.** Con el #160 hacia `dev` se
+   inició la ejecución; con el #156 hacia `main`, abierto cuando el pipeline ya existía, no se inició.
+   La causa no está identificada y su revisión sigue en la tarea 1.11 (#103).
+6. **La ubicación de salida del build no es un artefacto.** El build informa `BuildArtif/krWSeNK`, pero
+   ese objeto no existe porque la subida falló; conviene no confundirlo con un paquete generado.
 
 ## 8. Limitaciones y decisiones
 
