@@ -444,9 +444,8 @@ artifacts:
 El archivo no tiene fase de despliegue ni llama a la CLI de AWS: el pipeline termina al generar el artefacto,
 como exige el enunciado.
 
-![Figura 5.1. Proyecto de CodeBuild blacklist-devops-ci-build en la consola de AWS](capturas/entrega-2/1.7-proyecto-configuracion.png)
-
-![Figura 5.2. Registro del build: instalación, pruebas y cobertura](capturas/entrega-2/2.7-codebuild-registro-pruebas.png)
+La configuración del proyecto de CodeBuild que ejecuta este archivo está en la figura 4.9, y el registro del
+build, con las pruebas, la cobertura y el contenido del paquete, en las figuras 6.5 y 6.6.
 
 ### 5.2 El artefacto
 
@@ -457,8 +456,6 @@ carpetas solo entran archivos `.py` y `.config`. No entran `tests/`, `docs/`, `s
 
 En la ejecución exitosa el paquete fue `app-b0e9d03.zip`, con 31 archivos y `VERSION = b0e9d03`; la
 verificación completa está en la sección 6.3. En la ejecución fallida no se generó ningún artefacto (sección 7.3).
-
-![Figura 5.3. Registro del build: contenido del paquete y subida del artefacto](capturas/entrega-2/2.7-codebuild-registro-paquete.png)
 
 ### 5.3 Disparo automático
 
@@ -476,7 +473,7 @@ pipeline: se creó con las rutas excluidas también en el *push* y después se q
 (`docs/ci/1.11-pipeline.md`, sección 5.2). El *pull request* conserva las exclusiones: un PR que solo cambia
 documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
 
-![Figura 5.4. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
+![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
 
 **Evidencia del punto 4.** Un commit en `main` inicia el build sin intervención manual, también cuando solo
 cambia documentación:
@@ -489,7 +486,7 @@ cambia documentación:
   después inició la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`, que terminó en *Succeeded*. El commit, la
   ejecución y el historial están en las figuras 6.1 a 6.3 de la sección 6.1.
 
-![Figura 5.5. Historial del pipeline: la ejecución 19089be6, iniciada por el push del commit 3db0adb en main (promoción solo de documentación)](capturas/entrega-2/1.11-push-sin-filtro-ejecucion.png)
+![Figura 5.2. Historial del pipeline: la ejecución 19089be6, iniciada por el push del commit 3db0adb en main (promoción solo de documentación)](capturas/entrega-2/1.11-push-sin-filtro-ejecucion.png)
 
 **Pull request.** El pull request #160 hacia `dev` inició la ejecución fallida con el evento
 `PULL_REQUEST_CREATED` (sección 7.1), y el #164 hacia `main` inició la ejecución `901438a7`. El #156 hacia `main`
