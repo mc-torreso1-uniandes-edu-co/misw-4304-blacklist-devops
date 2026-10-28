@@ -476,6 +476,8 @@ pipeline: se creó con las rutas excluidas también en el *push* y después se q
 (`docs/ci/1.11-pipeline.md`, sección 5.2). El *pull request* conserva las exclusiones: un PR que solo cambia
 documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
 
+![Figura 5.4. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
+
 **Evidencia del punto 4.** El *merge* de la promoción `dev` → `main` (pull request #156) creó el commit
 `b0e9d03` y 5 segundos después inició, sin intervención manual, la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`
 del pipeline, que terminó en *Succeeded*. El commit, la ejecución y el historial están en las figuras 6.1 a 6.3 de
