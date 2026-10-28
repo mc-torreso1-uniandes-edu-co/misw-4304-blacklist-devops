@@ -42,7 +42,7 @@ Rúbrica: punto 2, CodeBuild (10 %); punto 3, archivo de construcción (25 %); p
 
 | Paso | Tiempo | Herramienta | En pantalla | Qué decir |
 |---|---|---|---|---|
-| Intro | 2:15–2:25 | GitHub | `buildspec.yml` en `main` (`625e8c4`) | Soy Héctor Melgarejo y voy a mostrar la configuración de la integración continua: el archivo de construcción, el proyecto de CodeBuild y el pipeline que lo dispara. |
+| Intro | 2:15–2:25 | GitHub | `buildspec.yml` en `main` (sin cambios desde `625e8c4`) | Soy Héctor Melgarejo y voy a mostrar la configuración de la integración continua: el archivo de construcción, el proyecto de CodeBuild y el pipeline que lo dispara. |
 | 2.1 | 2:25–3:00 | GitHub, `buildspec.yml` | `install`: Python 3.13 y `pip install -r requirements-dev.txt`; `build`: `pytest` con cobertura, verificación de `COMMIT_ID`, `scripts/empaquetar.py` y listado del zip; `artifacts`: `dist/app-*.zip` | El archivo de construcción está versionado en la raíz del repositorio. Instala las dependencias, ejecuta las pruebas con cobertura y, solo si pasan, empaqueta la aplicación en un zip con los siete primeros caracteres del commit. Si una prueba falla, el build se detiene antes de empaquetar. Termina en la generación del artefacto: no despliega nada. |
 | 2.2 | 3:00–3:30 | Consola de AWS, CodeBuild | `blacklist-devops-ci-build`: origen y artefactos desde CodePipeline; imagen `amazonlinux-x86_64-standard:6.0`, cómputo pequeño, sin variables de entorno; rol `blacklist-devops-codebuild-role`; registros en CloudWatch | El proyecto de CodeBuild recibe el código desde el pipeline y usa una imagen administrada de Amazon Linux 2023 con Python 3.13. No tiene variables con secretos ni cadena de conexión a la base. Su rol tiene permisos mínimos: escribir sus registros y leer y escribir solo en el bucket de artefactos. |
 | 2.3 | 3:30–4:05 | Consola de AWS, CodePipeline | `blacklist-devops-ci-pipeline`: V2, `QUEUED`, rol `blacklist-devops-codepipeline-role`; etapa *Source* con la conexión `blacklist-devops-github`; etapa *Build* con `COMMIT_ID = #{SourceVariables.CommitId}`; almacén en el bucket del proyecto | El pipeline tiene dos etapas. Origen obtiene el código de GitHub mediante una conexión autorizada solo para este repositorio, sin tokens personales. Construcción lanza CodeBuild y le pasa el identificador del commit. Las ejecuciones se encolan, así que una no reemplaza a otra. No hay etapa de despliegue. |
@@ -92,9 +92,10 @@ Rúbrica: punto 2 del documento, pipeline fallido (10 %).
 Antes de grabar:
 
 - Entorno encendido con `b0e9d03`, salud *Ok* y RDS disponible.
-- `main` está en `625e8c4`, con el `buildspec.yml` vigente (PR #164); su *push* disparó otra ejecución exitosa,
-  `8d6a7974`, que también aparece en el historial. El entorno sigue con `b0e9d03`, que es lo que muestra este
-  guion.
+- `main` está en `3db0adb` (promoción #172, solo documentación); el `buildspec.yml` vigente no cambia desde
+  `625e8c4` (PR #164). Los *push* de esos dos commits dispararon las ejecuciones exitosas `8d6a7974` y
+  `19089be6`, que aparecen en el historial por encima de la `ff3146a4` de la parte 3. El entorno sigue con
+  `b0e9d03`, que es lo que muestra este guion.
 - El pipeline está en la versión 2 desde el 27 de octubre: el *push* a `main` ya no excluye rutas y el
   *pull request* conserva sus exclusiones. La parte 2 se graba con esa configuración.
 - Token cargado solo como valor actual en `blacklist-aws`, con tipo *secret*.
