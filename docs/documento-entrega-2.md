@@ -470,8 +470,8 @@ código por la conexión `blacklist-devops-github`:
 
 El *push* a `main` no excluye ninguna ruta porque el enunciado pide que cada commit en la rama principal
 inicie el build; así, una promoción de solo documentación también lo dispara. Esta es la versión 2 del
-pipeline: se creó con las rutas excluidas también en el *push* y después se quitó esa exclusión
-(`docs/ci/1.11-pipeline.md`, sección 5.2). El *pull request* conserva las exclusiones: un PR que solo cambia
+pipeline: se creó con las rutas excluidas también en el *push* y el 27 de octubre de 2026 se quitó esa
+exclusión (sección 2). El *pull request* conserva las exclusiones: un PR que solo cambia
 documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
 
 ![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
