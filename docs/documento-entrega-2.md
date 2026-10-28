@@ -163,7 +163,8 @@ Notas aclaratorias:
 - **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
   mientras se trabaja y se graba el video: para esta entrega se volvió a provisionar el 23 de octubre de
   2026, con la misma URL, y se apaga después de grabar, así que puede no responder durante la
-  calificación. El pipeline de integración continua no depende del entorno.
+  calificación. El pipeline de integración continua no depende del entorno. La raíz de la URL responde
+  404 porque el API no define esa ruta; `/ping` responde con la versión desplegada.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 
@@ -176,8 +177,8 @@ recursos se crearon en octubre de 2026: el bucket y los roles el 22, el proyecto
 pipeline el 24; la conexión ya estaba disponible el 21. El bucket, la conexión y los roles se crearon en
 la consola de AWS, y el proyecto de CodeBuild y el pipeline con la CLI de la misma cuenta, verificados
 después en la consola. Los bloques de comandos de esta sección son el equivalente en la CLI de lo que se
-hizo en la consola: desde una terminal local llevan `--profile blacklist`, el perfil de la cuenta del
-proyecto, y en AWS CloudShell no hace falta.
+hizo en la consola, y en el proyecto y el pipeline, los comandos que se usaron: desde una terminal local
+llevan `--profile blacklist`, el perfil de la cuenta del proyecto, y en AWS CloudShell no hace falta.
 
 ### 4.1 Orden de creación y dependencias
 
@@ -192,9 +193,9 @@ proyecto, y en AWS CloudShell no hace falta.
 La conexión se crea antes que los roles porque la política del rol de CodePipeline usa su ARN, que lleva
 un identificador que AWS genera en ese momento: si la conexión se reemplaza, el ARN cambia. Los ARN del
 proyecto y del pipeline se forman con su nombre, así que sus políticas se pueden escribir de antemano.
-Ese orden no se respetó en el primer intento: la conexión se creó con un espacio al final del nombre y
-hubo que eliminarla y crearla otra vez con el mismo nombre. Las capturas de esta sección son de la
-conexión vigente.
+En el primer intento la conexión se creó con un espacio al final del nombre; como el nombre no se puede
+cambiar, se eliminó y se creó otra con el mismo nombre antes de escribir las políticas de los roles. Las
+capturas de esta sección son de la conexión vigente.
 
 ### 4.2 Bucket de artefactos
 
