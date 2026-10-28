@@ -394,7 +394,105 @@ proyecto.
 
 ## 5. Archivo de construcción y disparo automático
 
-[PENDIENTE: tarea 3.3 (#119).]
+Cubre los puntos 3 (25 %) y 4 (15 %) de la configuración: un archivo de construcción versionado en el
+repositorio, que ejecuta las pruebas unitarias y genera el artefacto sin desplegarlo, y el disparo
+automático del build con cada commit en la rama principal.
+
+### 5.1 El archivo de construcción
+
+El `buildspec.yml` está en la raíz del repositorio, en `main` y en `dev`. El proyecto de CodeBuild
+`blacklist-devops-ci-build` no define comandos propios: ejecuta este archivo, que llega con el código de
+cada commit.
+
+```yaml
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    APP_ENV: "testing"
+
+phases:
+  install:
+    runtime-versions:
+      python: "3.13"
+    commands:
+      - pip install -r requirements-dev.txt
+  build:
+    commands:
+      - python -m pytest -q --cov=app
+      - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
+      - ETIQUETA="${COMMIT_ID:0:7}"
+      - python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
+      - python -m zipfile -l "dist/app-${ETIQUETA}.zip"
+
+artifacts:
+  files:
+    - dist/app-*.zip
+  discard-paths: yes
+```
+
+| Parte | Qué hace |
+|---|---|
+| `env` | Ejecuta los comandos con `bash` y fija `APP_ENV=testing`: la aplicación usa la configuración de pruebas, con SQLite en memoria, sin base de datos ni secretos |
+| `install` | Selecciona Python 3.13 en la imagen administrada e instala las dependencias de `requirements-dev.txt` |
+| `build`: pruebas | `pytest -q --cov=app` ejecuta las 97 pruebas con la cobertura del paquete `app`. Si una falla, la fase se detiene: no se genera el paquete ni se sube artefacto |
+| `build`: `COMMIT_ID` | Comprueba que el pipeline entregó el identificador del commit, después de las pruebas para que un fallo de prueba se vea como tal y no como una variable ausente. Si falta, el build falla con un mensaje claro |
+| `build`: etiqueta | Toma los siete primeros caracteres de `COMMIT_ID`. El origen llega al build sin la carpeta `.git`, por eso el identificador lo pasa la acción de construcción del pipeline (`#{SourceVariables.CommitId}`) |
+| `build`: paquete | `scripts/empaquetar.py` genera `dist/app-<commit>.zip`. Lleva `--omitir-pruebas` porque las pruebas ya corrieron en el paso anterior. `python -m zipfile -l` deja el contenido del paquete en los registros |
+| `artifacts` | Declara `dist/app-*.zip` como salida del build; el pipeline la guarda como `BuildArtifact` en el bucket de S3 |
+
+El archivo no tiene fase de despliegue ni llama a la CLI de AWS: el pipeline termina al generar el artefacto,
+como exige el enunciado.
+
+La configuración del proyecto de CodeBuild que ejecuta este archivo está en la figura 4.9, y el registro del
+build, con las pruebas, la cobertura y el contenido del paquete, en las figuras 6.5 y 6.6.
+
+### 5.2 El artefacto
+
+`scripts/empaquetar.py` arma el paquete a partir de una lista explícita de entradas: `application.py`, `app/`,
+`requirements.txt`, `Procfile` y `.ebextensions/`, y escribe dentro el archivo `VERSION` con la etiqueta. En las
+carpetas solo entran archivos `.py` y `.config`. No entran `tests/`, `docs/`, `scripts/`, `postman/`, `.env`,
+`.venv` ni bases de datos locales.
+
+En la ejecución exitosa el paquete fue `app-b0e9d03.zip`, con 31 archivos y `VERSION = b0e9d03`; la
+verificación completa está en la sección 6.3. En la ejecución fallida no se generó ningún artefacto (sección 7.3).
+
+### 5.3 Disparo automático
+
+El disparo lo hace AWS CodePipeline V2 con dos disparadores de Git sobre la acción de origen, que obtiene el
+código por la conexión `blacklist-devops-github`:
+
+| Disparador | Eventos | Ramas de destino | Rutas excluidas |
+|---|---|---|---|
+| *Push* | Push | `main` | Ninguna |
+| *Pull request* | Abierto (`OPEN`) y actualizado (`UPDATED`) | `dev` y `main` | `docs/**`, `postman/**`, `**/*.md` |
+
+El *push* a `main` no excluye ninguna ruta porque el enunciado pide que cada commit en la rama principal
+inicie el build; así, una promoción de solo documentación también lo dispara. Esta es la versión 2 del
+pipeline: se creó con las rutas excluidas también en el *push* y después se quitó esa exclusión
+(`docs/ci/1.11-pipeline.md`, sección 5.2). El *pull request* conserva las exclusiones: un PR que solo cambia
+documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
+
+![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
+
+**Evidencia del punto 4.** Un commit en `main` inicia el build sin intervención manual, también cuando solo
+cambia documentación:
+
+- **Commit de solo documentación, con la versión 2.** El 27 de octubre de 2026 se fusionó en `main` la promoción
+  #172, que creó el commit `3db0adb`. Ese commit solo cambió archivos de `docs/`, rutas que la versión 1 excluía.
+  Su *push* inició la ejecución `19089be6` a las 18:50 (UTC-05:00), que terminó correctamente a las 18:51, en
+  1 minuto 8 segundos.
+- **Commit de código, con la versión 1.** El *merge* de la promoción #156 creó el commit `b0e9d03` y 5 segundos
+  después inició la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`, que terminó en *Succeeded*. El commit, la
+  ejecución y el historial están en las figuras 6.1 a 6.3 de la sección 6.1.
+
+![Figura 5.2. Historial del pipeline: la ejecución 19089be6, iniciada por el push del commit 3db0adb en main (promoción solo de documentación)](capturas/entrega-2/1.11-push-sin-filtro-ejecucion.png)
+
+**Pull request.** El pull request #160 hacia `dev` inició la ejecución fallida con el evento
+`PULL_REQUEST_CREATED` (sección 7.1), y el #164 hacia `main` inició la ejecución `901438a7`. El #156 hacia `main`
+no inició ninguna y su causa no está identificada. El evento `UPDATED` no se verificó. El punto 4 de la
+configuración no depende de los pull requests: se cumple con el *push* a `main`.
 
 ## 6. Pipeline exitoso
 
