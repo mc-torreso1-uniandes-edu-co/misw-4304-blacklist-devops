@@ -10,7 +10,7 @@
 
 ## Contenido
 
-1. Descripción del microservicio
+1. Descripción del microservicio y pruebas por endpoint (punto 1 de la configuración, 30 %)
 2. Arquitectura de la integración continua
 3. Enlaces de la entrega
 4. Configuración en AWS (punto 2 de la configuración, 10 %)
@@ -20,7 +20,7 @@
 8. Limitaciones y decisiones
 9. Conclusiones
 
-## 1. Descripción del microservicio
+## 1. Descripción del microservicio y pruebas por endpoint
 
 El microservicio administra la lista negra global de emails de la organización. Los sistemas internos
 lo usan para agregar un email a la lista y para consultar si un email está en ella. Es un único
@@ -46,13 +46,30 @@ El código está organizado por capas: `domain` (entidad, validación del email,
 (recursos HTTP, esquema de validación, autenticación y repositorio SQLAlchemy). El email se normaliza a
 minúsculas y sin espacios al guardar y al consultar.
 
-**Pruebas unitarias.** La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`. Cada
-endpoint tiene sus escenarios: respuestas correctas, validaciones, duplicados, normalización del email,
-las cinco variantes de credencial inválida (401) y que `/ping` no consulta la base. Las pruebas usan
-SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. Antes de configurar
-el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni base de datos, como
-el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por archivo y en orden
-inverso.
+### 1.1 Pruebas por endpoint
+
+Cubre el punto 1 de la configuración (30 %): cada endpoint tiene escenarios de prueba unitaria para todas
+las respuestas de su contrato. La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`: 39 son
+de la API (23 en `tests/test_blacklist_api.py`, 10 casos de credencial inválida en
+`tests/test_authentication.py` y 6 en `tests/test_ping.py`) y las otras 58 cubren la configuración, el
+dominio y los scripts de empaquetado y monitoreo.
+
+| Endpoint | Respuesta | Escenario | Prueba representativa |
+|---|---|---|---|
+| `POST /blacklists` | 201 | Alta correcta, con mensaje e id; la IP y la fecha se prueban aparte | `test_post_adds_email_and_returns_id` |
+| | 400 | Email inválido o campos faltantes | `test_post_rejects_invalid_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_post_rejects_invalid_credentials_with_unauthorized` |
+| | 409 | Email duplicado, también con otras mayúsculas o espacios | `test_post_duplicated_email_returns_conflict` |
+| `GET /blacklists/<email>` | 200 | Email en la lista, con su motivo | `test_get_returns_true_and_reason_for_blacklisted_email` |
+| | 200 | Email que no está en la lista | `test_get_returns_false_for_unknown_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_get_rejects_invalid_credentials_with_unauthorized` |
+| `GET /ping` | 200 | Sin token, solo con la versión y sin consultar la base | `test_ping_does_not_query_the_database` |
+
+Las pruebas usan SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red.
+Antes de configurar el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni
+base de datos, como el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por
+archivo y en orden inverso. En el pipeline corren en cada build: en la ejecución exitosa pasaron las 97
+(sección 6.2 y figura 6.5), y en la fallida el registro identifica la prueba que falló (sección 7.2).
 
 ## 2. Arquitectura de la integración continua
 
@@ -109,7 +126,9 @@ Los dos disparadores están comprobados, sin intervención manual: el *merge* de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
 causa identificada; el siguiente pull request hacia `main`, el #164, sí inició la ejecución `901438a7`, y el
-*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito.
+*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito. Con la versión 2
+del pipeline, el *push* del commit `3db0adb`, que solo cambió documentación, inició la ejecución `19089be6`
+(sección 5.3).
 
 El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
 quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
@@ -369,8 +388,7 @@ pipeline termina cuando el paquete queda en el bucket. Se crea con un archivo de
 aws codepipeline create-pipeline --region us-east-2 --cli-input-json file://pipeline.json
 ```
 
-Su contenido, los disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la
-sección 5.
+Sus disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la sección 5.
 
 Los cinco recursos se comprueban con consultas de solo lectura, que se pueden repetir sin cambiar nada.
 Las de S3, CodeConnections, CodeBuild y CodePipeline llevan `--region us-east-2`:
@@ -581,9 +599,11 @@ CodePipeline guardó la salida del build en el bucket del proyecto como
 Fuera del pipeline, el paquete se extrajo de ese objeto, se subió como versión `b0e9d03` de la
 aplicación y se desplegó en `Blacklist-devops-env`: el despliegue tardó 54 segundos, las tres instancias
 quedaron con salud *Ok* y `/ping` responde `{"version": "b0e9d03"}`. Contra ese entorno, la colección de
-Postman pasó 22 de 22 pruebas.
+Postman pasó 22 de 22 pruebas (figura 6.9).
 
 ![Figura 6.8. /ping responde la versión del artefacto desplegado](capturas/entrega-2/2.11-ping-version.png)
+
+![Figura 6.9. Colección de Postman contra el entorno de Beanstalk con blacklist-aws: 22 de 22 pruebas aprobadas](capturas/entrega-2/2.12-postman-runner-resumen.png)
 
 ### 6.4 Hallazgos
 
