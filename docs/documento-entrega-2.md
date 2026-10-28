@@ -478,11 +478,18 @@ documentación no consume minutos de construcción, y al fusionarlo el *push* a 
 
 ![Figura 5.4. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
 
-**Evidencia del punto 4.** El *merge* de la promoción `dev` → `main` (pull request #156) creó el commit
-`b0e9d03` y 5 segundos después inició, sin intervención manual, la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`
-del pipeline, que terminó en *Succeeded*. El commit, la ejecución y el historial están en las figuras 6.1 a 6.3 de
-la sección 6.1. Esa ejecución se disparó con la versión 1 del pipeline; ese commit cambiaba archivos de código,
-así que las exclusiones de rutas no influyeron.
+**Evidencia del punto 4.** Un commit en `main` inicia el build sin intervención manual, también cuando solo
+cambia documentación:
+
+- **Commit de solo documentación, con la versión 2.** El 27 de octubre de 2026 se fusionó en `main` la promoción
+  #172, que creó el commit `3db0adb`. Ese commit solo cambió archivos de `docs/`, rutas que la versión 1 excluía.
+  Su *push* inició la ejecución `19089be6` a las 18:50 (UTC-05:00), que terminó correctamente a las 18:51, en
+  1 minuto 8 segundos.
+- **Commit de código, con la versión 1.** El *merge* de la promoción #156 creó el commit `b0e9d03` y 5 segundos
+  después inició la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`, que terminó en *Succeeded*. El commit, la
+  ejecución y el historial están en las figuras 6.1 a 6.3 de la sección 6.1.
+
+![Figura 5.5. Historial del pipeline: la ejecución 19089be6, iniciada por el push del commit 3db0adb en main (promoción solo de documentación)](capturas/entrega-2/1.11-push-sin-filtro-ejecucion.png)
 
 **Pull request.** El pull request #160 hacia `dev` inició la ejecución fallida con el evento
 `PULL_REQUEST_CREATED` (sección 7.1), y el #164 hacia `main` inició la ejecución `901438a7`. El #156 hacia `main`
