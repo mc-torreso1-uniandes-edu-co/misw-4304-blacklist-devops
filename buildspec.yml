@@ -10,6 +10,8 @@ phases:
     runtime-versions:
       python: "3.13"
     commands:
+      - MAKE_OPTS="-j$(nproc)" pyenv install --skip-existing "$(cat .python-version)"
+      - python --version
       - pip install -r requirements-dev.txt
   build:
     commands:
