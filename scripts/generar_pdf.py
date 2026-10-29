@@ -4,6 +4,7 @@ Uso, desde la raíz del repositorio:
     python scripts/generar_pdf.py --entrega 2                # deja el PDF en docs/pdf/
     python scripts/generar_pdf.py --entrega 1 --completo     # entrega 1 con todas las capturas
     python scripts/generar_pdf.py --entrega 2 --si-cambia    # no genera si el PDF ya está al día
+    python scripts/generar_pdf.py --en-curso                 # imprime el número de la entrega en curso
 
 Documento de cada entrega: docs/documento-entrega-<N>.md (la entrega 1 usa docs/documento-entrega.md).
 Si el documento no existe o no tiene contenido, no genera nada y termina sin error.
@@ -23,12 +24,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 DOCS = RAIZ / "docs"
 SALIDA = DOCS / "pdf"
 ENTREGAS = (1, 2, 3, 4)
+# fecha oficial de cada entrega; vence a las 23:59 hora de Colombia (UTC-5, sin horario de verano)
+FECHAS_ENTREGA = {1: date(2026, 10, 18), 2: date(2026, 11, 1), 3: date(2026, 11, 15), 4: date(2026, 11, 29)}
+HORA_COLOMBIA = timezone(timedelta(hours=-5))
 PLANTILLA_NOMBRE = "Proyecto 1 entrega {n} \u2013 Documento"
 PREFIJO_HUELLA = "huella-fuentes:"
 CLAVES_METADATOS = {"title", "author", "subject", "keywords", "creator", "producer", "creationDate", "modDate"}
@@ -82,6 +87,12 @@ table.texto td, table.texto td:first-child, table.texto td:first-child code { wh
 def fallar(mensaje):
     print("ERROR:", mensaje)
     sys.exit(1)
+
+
+def entrega_en_curso(ahora=None):
+    """Primera entrega cuya fecha oficial aún no ha pasado; None si ya pasaron todas."""
+    hoy = (ahora or datetime.now(timezone.utc)).astimezone(HORA_COLOMBIA).date()
+    return next((n for n in ENTREGAS if hoy <= FECHAS_ENTREGA[n]), None)
 
 
 def documento_de(entrega):
@@ -267,12 +278,18 @@ def verificar(markdown, ruta_pdf):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--entrega", type=int, choices=ENTREGAS, required=True, help="número de la entrega")
+    grupo = ap.add_mutually_exclusive_group(required=True)
+    grupo.add_argument("--entrega", type=int, choices=ENTREGAS, help="número de la entrega")
+    grupo.add_argument("--en-curso", action="store_true",
+                       help="solo imprime el número de la entrega en curso (vacío si ya pasaron todas)")
     ap.add_argument("--completo", action="store_true", help="entrega 1: incluye todas las capturas")
     ap.add_argument("--si-cambia", action="store_true",
                     help="no genera si el PDF existente tiene la misma huella de las fuentes")
     ap.add_argument("--salida", type=Path, default=SALIDA, help="carpeta del PDF (docs/pdf por defecto)")
     args = ap.parse_args()
+    if args.en_curso:
+        print(entrega_en_curso() or "")
+        return
     titulo = PLANTILLA_NOMBRE.format(n=args.entrega)
     documento = documento_de(args.entrega)
     ruta_pdf = args.salida / (titulo + ".pdf")

@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timezone
 
 import pytest
 
@@ -20,6 +21,31 @@ def docs(tmp_path, monkeypatch):
 def ejecutar(monkeypatch, *argumentos):
     monkeypatch.setattr(sys, "argv", ["generar_pdf.py", *argumentos])
     generar_pdf.main()
+
+
+@pytest.mark.parametrize("instante_utc, entrega", [
+    ("2026-10-05T12:00", 1),
+    ("2026-10-19T04:59", 1),   # domingo 18 de octubre, 23:59 en Colombia
+    ("2026-10-19T05:00", 2),   # lunes 19 de octubre, 00:00 en Colombia
+    ("2026-10-29T16:00", 2),
+    ("2026-11-02T04:59", 2),
+    ("2026-11-02T05:00", 3),
+    ("2026-11-16T05:00", 4),
+    ("2026-11-30T04:59", 4),
+])
+def test_entrega_en_curso_segun_la_fecha_oficial(instante_utc, entrega):
+    ahora = datetime.fromisoformat(instante_utc).replace(tzinfo=timezone.utc)
+    assert generar_pdf.entrega_en_curso(ahora) == entrega
+
+
+def test_sin_entrega_en_curso_despues_de_la_ultima():
+    assert generar_pdf.entrega_en_curso(datetime(2026, 11, 30, 5, 0, tzinfo=timezone.utc)) is None
+
+
+def test_en_curso_imprime_el_numero(monkeypatch, capsys):
+    monkeypatch.setattr(generar_pdf, "entrega_en_curso", lambda: 3)
+    ejecutar(monkeypatch, "--en-curso")
+    assert capsys.readouterr().out.strip() == "3"
 
 
 def test_documento_de_la_entrega_1_sin_numero(docs):
