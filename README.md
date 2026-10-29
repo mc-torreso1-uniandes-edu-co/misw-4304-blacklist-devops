@@ -1,7 +1,7 @@
 # Microservicio de Lista Negra Global de Emails
 Proyecto de DevOps - MISW - 202615. Grupo Blacklist DevOps
 
-Microservicio REST en Python y Flask para que los sistemas internos de una empresa agreguen emails a una lista negra global y consulten si un email está en ella. Se despliega de forma manual, sin CI/CD, en AWS Elastic Beanstalk con PostgreSQL en Amazon RDS (región `us-east-2`).
+Microservicio REST en Python y Flask para que los sistemas internos de una empresa agreguen emails a una lista negra global y consulten si un email está en ella. Corre en AWS Elastic Beanstalk con PostgreSQL en Amazon RDS (región `us-east-2`). Cada commit en `main` y cada pull request hacia `dev` o `main` pasan por un pipeline de integración continua (AWS CodePipeline y CodeBuild) que ejecuta las pruebas y genera el paquete de la aplicación; el despliegue en Beanstalk sigue siendo manual.
 
 ## Enlaces
 | Recurso | Enlace |
@@ -9,6 +9,7 @@ Microservicio REST en Python y Flask para que los sistemas internos de una empre
 | Documentación del API (Postman) | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Entorno en AWS | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com (se enciende solo mientras se trabaja; `/ping` indica si responde) |
+| Pipeline de integración continua | Consola de AWS, región `us-east-2`: CodePipeline `blacklist-devops-ci-pipeline` y CodeBuild `blacklist-devops-ci-build` |
 
 ## Stack
 | Componente | Versión |
@@ -32,9 +33,18 @@ app/                  # el microservicio, por capas
 scripts/              # generar_token.py, empaquetar.py y monitor_disponibilidad.py
 tests/                # pytest
 postman/              # colección y environments (JSON v2.1)
-docs/                 # enunciado y aclaraciones del curso, despliegues/ (mediciones) y pruebas/
+docs/                 # enunciados, rúbricas y aclaraciones del curso, documentos de cada entrega y:
+  ci/                 #   diseño, configuración y ejecuciones del pipeline de integración continua
+  pruebas/            #   escenarios por endpoint y resultados de las pruebas
+  despliegues/        #   infraestructura reproducible y mediciones de las estrategias de despliegue
+  capturas/           #   capturas de las entregas (desde la Entrega 2, en capturas/entrega-<N>/)
 .ebextensions/        # configuración de Beanstalk (health check en /ping)
 .github/              # chequeos de las ramas
+buildspec.yml         # archivo de construcción de CodeBuild: pruebas y paquete
+requirements.txt      # dependencias de la aplicación
+requirements-dev.txt  # las de la aplicación más pytest y pytest-cov
+.python-version       # 3.13.16
+.env.example          # variables de entorno locales, sin valores reales
 Procfile              # web: gunicorn --bind :8000 --workers 2 application:application
 VERSION               # etiqueta de versión que devuelve /ping (el empaquetado la escribe)
 ```
@@ -116,19 +126,63 @@ Cuerpo del POST:
 ```
 
 ## Pruebas
-No necesitan `.env` ni base de datos: usan SQLite en memoria.
+No necesitan `.env`, base de datos ni red: usan SQLite en memoria. Basta con crear el entorno (sección "Crear el entorno") y, con el entorno activado, ejecutar desde la raíz del repositorio:
 ```bash
 python -m pytest -q
-python -m pytest --cov=app
+python -m pytest -q --cov=app
 ```
 
-Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
+El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es `97 passed` y una cobertura del 100 % sobre `app/`. Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
+
+| Archivo | Pruebas | Qué cubre |
+|---|---|---|
+| `tests/test_blacklist_api.py` | 23 | `POST /blacklists` y `GET /blacklists/<email>` |
+| `tests/test_authentication.py` | 10 | 401 en los dos endpoints protegidos, cinco variantes de credencial en cada uno |
+| `tests/test_ping.py` | 6 | `GET /ping` y lectura del archivo `VERSION` |
+| `tests/test_configuration.py` | 16 | Configuración por ambiente |
+| `tests/test_empaquetar.py` | 15 | Script de empaquetado |
+| `tests/test_monitor_disponibilidad.py` | 25 | Script de monitoreo del despliegue |
+| `tests/test_app_creation.py` | 1 | Creación de la aplicación |
+| `tests/test_domain.py` | 1 | Entidad de dominio |
+
+Escenarios por endpoint (cada respuesta del contrato tiene al menos una prueba):
+
+| Endpoint | Escenarios |
+|---|---|
+| `POST /blacklists` | **201**: alta correcta con `msg` e `id`, sin `blocked_reason` o con él nulo, email guardado normalizado, IP del cliente desde `X-Forwarded-For`, fecha de creación, motivo de 255 caracteres. **400**: email o `app_uuid` inválidos, motivo de 256 caracteres, campos obligatorios faltantes, cuerpo que no es JSON o JSON mal formado. **409**: email duplicado, también con otras mayúsculas, con espacios alrededor o por una solicitud concurrente. **401**: sin token, token malformado, esquema no soportado, `Bearer` sin token y token firmado con otra clave |
+| `GET /blacklists/<email>` | **200**: email en la lista con su motivo, email que no está (`is_blacklisted` falso y motivo nulo), mayúsculas y espacios normalizados. **401**: las mismas cinco variantes de credencial |
+| `GET /ping` | **200** sin token y con el cuerpo exacto `{"version": ...}`, sin consultar la base; la versión sale de `VERSION`, con un valor por defecto si falta o está vacío |
+
+El detalle prueba por prueba está en `docs/pruebas/2.1-escenarios-por-endpoint.md`.
+
+## Integración continua
+Un pipeline de AWS CodePipeline (V2) con dos etapas: **Source** obtiene el código de GitHub mediante la conexión `blacklist-devops-github`, autorizada solo para este repositorio, y **Build** lo construye en el proyecto de CodeBuild `blacklist-devops-ci-build`. No tiene etapa de despliegue.
+
+**Cuándo se ejecuta:**
+- Con cada *push* a `main`, es decir, cada commit que llega a la rama principal, sin excluir ningún archivo.
+- Con cada pull request abierto o actualizado hacia `dev` o `main`. En los pull requests se omiten los cambios que solo tocan `docs/**`, `postman/**` o archivos `.md`.
+- Las ejecuciones se encolan (modo `QUEUED`): una no reemplaza a otra en curso.
+
+**Qué hace el build** (`buildspec.yml`, imagen `amazonlinux-x86_64-standard:6.0` con Python 3.13):
+1. `install`: `pip install -r requirements-dev.txt`.
+2. `build`: `python -m pytest -q --cov=app`. Si una prueba falla, el build termina en *Failed* y no se genera el paquete.
+3. Si las pruebas pasan, `scripts/empaquetar.py` genera `dist/app-<commit>.zip`, con los siete primeros caracteres del commit (variable `COMMIT_ID`, que le pasa el pipeline) como etiqueta de versión.
+4. `artifacts`: CodePipeline guarda el paquete en el bucket `blacklist-devops-ci-artifacts-253041091381`, dentro de un objeto con nombre generado (`blacklist-devops-ci-/BuildArtif/<id>`).
+
+**Dónde ver los resultados** (consola de AWS, región `us-east-2`):
+| Qué | Dónde |
+|---|---|
+| Historial de ejecuciones, con el commit y el disparador de cada una | CodePipeline → `blacklist-devops-ci-pipeline` → *Executions* |
+| Fases del build, su duración y el registro con el resultado de `pytest` | CodeBuild → `blacklist-devops-ci-build` → *Build history* (el registro también queda en CloudWatch Logs) |
+| Paquete generado | S3 → `blacklist-devops-ci-artifacts-253041091381` → `blacklist-devops-ci-/BuildArtif/` |
+
+El build no despliega. Para desplegar un paquete del pipeline, se descarga el objeto de `BuildArtif/`, se extrae `app-<commit>.zip` y se carga en Beanstalk como se explica en "Empaquetar y desplegar en AWS"; `/ping` responde entonces el commit. Diseño, configuración y ejecuciones documentadas: `docs/ci/` (procedimiento completo en `docs/ci/1.7-codebuild.md`, ejecución exitosa en `docs/ci/2.2-pipeline-exitoso.md`, fallida en `docs/ci/2.3-pipeline-fallido.md` y despliegue manual del artefacto en `docs/ci/2.11-despliegue-manual.md`).
 
 ## Postman
 La colección y los environments (`blacklist-local` y `blacklist-aws`) están en `postman/`. Importa los tres archivos, completa `token` en el environment y ejecuta los escenarios en orden. `base_url` ya apunta a `http://localhost:5000` (local) y a `http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com` (AWS). El token se carga solo como valor actual, nunca como valor inicial: el workspace es público. Los resultados contra AWS están en `docs/pruebas/2.3b-pruebas-aws.md`.
 
 ## Empaquetar y desplegar en AWS
-El despliegue es manual. Para generar un paquete:
+El despliegue es manual. El pipeline genera el paquete de cada commit (ver "Integración continua"); para generar uno en local:
 ```bash
 python scripts/empaquetar.py <etiqueta>   # por ejemplo v1.1
 ```
@@ -164,6 +218,7 @@ Se inicia antes de desplegar y se detiene con Ctrl+C cuando el entorno vuelve a 
 Hay dos ramas protegidas: `main` (estable) y `dev` (integración). Nadie hace commit directo a ninguna.
 - Los cambios salen de una rama de trabajo creada desde `dev` (con prefijo como `feature/`, `fix/` o `docs/`) y entran por un PR hacia `dev`, con una aprobación y fusión con *squash*. Un chequeo (`no-desde-main`) impide PR desde `main`.
 - `dev` se promueve a `main` con un PR y *merge commit*. Un chequeo (`solo-desde-dev`) impide que `main` reciba PR de otras ramas.
+- Cada commit en `main` y los PR hacia `dev` o `main` (salvo los que solo cambian documentación) inician el pipeline de integración continua.
 - Los paquetes que se despliegan salen de `main`.
 
 ## Problemas conocidos en Windows
