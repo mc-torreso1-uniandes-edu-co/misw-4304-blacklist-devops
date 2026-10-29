@@ -164,7 +164,7 @@ Un pipeline de AWS CodePipeline (V2) con dos etapas: **Source** obtiene el códi
 - Las ejecuciones se encolan (modo `QUEUED`): una no reemplaza a otra en curso.
 
 **Qué hace el build** (`buildspec.yml`, imagen `amazonlinux-x86_64-standard:6.0` con Python 3.13):
-1. `install`: `pip install -r requirements-dev.txt`.
+1. `install`: `pyenv install --skip-existing` con la versión de `.python-version` (3.13.16; la imagen trae otro parche de 3.13 y lo compila si falta), luego `pip install -r requirements-dev.txt`.
 2. `build`: `python -m pytest -q --cov=app`. Si una prueba falla, el build termina en *Failed* y no se genera el paquete.
 3. Si las pruebas pasan, `scripts/empaquetar.py` genera `dist/app-<commit>.zip`, con los siete primeros caracteres del commit (variable `COMMIT_ID`, que le pasa el pipeline) como etiqueta de versión.
 4. `artifacts`: CodePipeline guarda el paquete en el bucket `blacklist-devops-ci-artifacts-253041091381`, dentro de un objeto con nombre generado (`blacklist-devops-ci-/BuildArtif/<id>`).
