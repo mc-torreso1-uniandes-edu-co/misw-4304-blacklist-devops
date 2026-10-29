@@ -727,8 +727,65 @@ nuevo en el bucket es el código de origen que la etapa Source deja como entrada
 
 ## 8. Limitaciones y decisiones
 
-[PENDIENTE: tarea 3.6 (#122).]
+Esta sección reúne las decisiones de la entrega que no son de arquitectura (esas están en la sección 2) y
+las limitaciones conocidas de la solución, con su efecto y cómo se manejan.
+
+### 8.1 Decisiones
+
+| Decisión | Alternativa descartada | Motivo |
+|---|---|---|
+| Disparar con cada *push* a `main`, sin rutas excluidas (versión 2 del pipeline) | Mantener la exclusión de `docs/**`, `postman/**` y `**/*.md` también en el *push* | El enunciado pide que cada commit en la rama principal inicie el build; con la exclusión, una promoción de solo documentación no lo iniciaba (secciones 2 y 5.3) |
+| Validar también los pull requests hacia `dev` y `main`, sin los cambios de solo documentación | Validar solo después de fusionar | Una prueba rota se detecta antes de llegar a las ramas protegidas, sin gastar minutos de construcción en cambios de documentación |
+| Modo de ejecución `QUEUED` | `SUPERSEDED`, el modo por defecto | Cada commit queda con su propia ejecución y su propio resultado; ninguno reemplaza a otro |
+| Verificar `COMMIT_ID` después de `pytest` (pull request #154) | Verificarlo al inicio de la fase `build` | Si fallan las pruebas, el registro muestra la prueba y no una variable ausente (sección 7.5) |
+| Etiquetar el paquete con los siete primeros caracteres del commit, en el nombre y en `VERSION` | Una numeración propia o la fecha | Del entorno se llega al commit sin consultar otra fuente: `/ping` responde la misma etiqueta |
+| Cómputo `BUILD_GENERAL1_SMALL`, sin caché | Un cómputo mayor o caché de dependencias | El build dura 30 segundos y la suite no necesita más recursos; la caché agregaría configuración para ahorrar parte de los 19 segundos de instalación |
+| Provocar el fallo con un pull request cerrado sin fusionar | Un commit con la prueba rota en `dev` o en `main`, o un build lanzado a mano | La prueba rota no toca las ramas protegidas y se obtiene una ejecución del pipeline, que es lo que pide el punto 2 del documento (sección 7.1) |
+| Encender el entorno de Beanstalk solo para trabajar y grabar | Dejarlo encendido durante toda la entrega | Sigue la aclaración del tutor sobre los recursos de AWS y el plan gratuito; el pipeline no depende del entorno (sección 3) |
+
+### 8.2 Limitaciones
+
+1. **El despliegue es manual.** La entrega excluye el despliegue continuo, así que el pipeline termina en el
+   bucket. Para desplegar, una persona descarga el objeto con nombre generado, extrae `app-<commit>.zip` y lo
+   sube a Beanstalk. Es el paso más propenso a errores, porque hay que identificar qué objeto corresponde a
+   qué build. Se mitiga con la etiqueta del commit dentro del paquete: después del despliegue, `/ping`
+   confirma qué versión quedó en el entorno.
+2. **Las pruebas unitarias no usan PostgreSQL.** Con SQLite en memoria el build es rápido y no necesita
+   secretos, pero no detecta diferencias entre los dos motores, como tipos de datos o restricciones. La
+   integración con PostgreSQL se comprueba fuera del pipeline, con la colección de Postman contra el entorno
+   (22 de 22, sección 6.3).
+3. **La colección de Postman no corre en el pipeline.** Las pruebas del API contra el entorno se ejecutan a
+   mano: como el pipeline no despliega, no tiene un entorno con la versión recién construida al que apuntar.
+4. **El build solo prueba y empaqueta.** No exige un mínimo de cobertura (`pytest` corre con `--cov=app` y
+   sin `--cov-fail-under`) ni ejecuta análisis estático o revisión de vulnerabilidades de las dependencias.
+   Hoy la cobertura es del 100 %, pero si bajara, el build no fallaría.
+5. **El disparador de pull request no está explicado del todo.** El #156 hacia `main` no inició ninguna
+   ejecución y no se identificó la causa, y el evento `UPDATED` no se verificó (sección 5.3). El punto 4 de la
+   configuración no depende de este disparador.
+6. **El bucket acumula objetos.** No tiene versionado ni reglas de ciclo de vida: cada ejecución deja el
+   código de origen (`SourceArti/`) y, si el build pasa, el paquete (`BuildArtif/`). Con el volumen de esta
+   entrega el espacio es despreciable; con un uso continuo haría falta una regla de expiración.
+7. **El entorno puede no responder durante la calificación.** Se apaga después de grabar. El pipeline, el
+   bucket y los registros del build siguen disponibles.
 
 ## 9. Conclusiones
 
-[PENDIENTE: tarea 3.6 (#122).]
+1. **La integración continua cumple lo que pide la entrega.** Cada commit en `main` inicia el pipeline sin
+   intervención manual; CodeBuild ejecuta las 97 pruebas y, si pasan, deja `app-<commit>.zip` en S3. Una
+   ejecución completa tarda entre 38 segundos y poco más de un minuto.
+2. **Lo que se despliega es lo que se probó.** El paquete solo se genera después de que pasan las pruebas,
+   en el mismo build y con el mismo código. La ejecución fallida lo confirmó: con una prueba rota no hubo
+   paquete ni cambios en las ramas.
+3. **La trazabilidad sale de nombrar bien el artefacto.** Poner el commit en el nombre del paquete y en
+   `VERSION` permite seguir una versión desde `/ping` hasta el build, la ejecución y el pull request que la
+   originó, sin registros adicionales.
+4. **Los disparadores se comprueban contra el requisito, no solo se configuran.** Excluir rutas parecía una
+   optimización razonable, pero dejaba commits de la rama principal sin build; se detectó al revisar el
+   enunciado y se corrigió con la versión 2. El caso del #156 mostró además que un disparador configurado no
+   garantiza una ejecución: la evidencia tiene que ser una ejecución real.
+5. **La seguridad no exigió más complejidad.** La conexión con GitHub sin tokens, los roles con permisos
+   mínimos y un build sin secretos ni variables de entorno dejan al pipeline sin credenciales que proteger.
+   Las pruebas sin base de datos ayudaron: el build no necesita conocer la cadena de conexión.
+6. **El siguiente paso es el despliegue continuo.** El paso manual a Beanstalk es la parte más lenta y
+   propensa a errores del ciclo. Con el artefacto ya etiquetado, una etapa de despliegue, pruebas de
+   integración con PostgreSQL y un umbral de cobertura resolverían las limitaciones de la sección 8.
