@@ -10,7 +10,7 @@
 
 ## Contenido
 
-1. Descripción del microservicio
+1. Descripción del microservicio y pruebas por endpoint (punto 1 de la configuración, 30 %)
 2. Arquitectura de la integración continua
 3. Enlaces de la entrega
 4. Configuración en AWS (punto 2 de la configuración, 10 %)
@@ -20,7 +20,7 @@
 8. Limitaciones y decisiones
 9. Conclusiones
 
-## 1. Descripción del microservicio
+## 1. Descripción del microservicio y pruebas por endpoint
 
 El microservicio administra la lista negra global de emails de la organización. Los sistemas internos
 lo usan para agregar un email a la lista y para consultar si un email está en ella. Es un único
@@ -46,13 +46,30 @@ El código está organizado por capas: `domain` (entidad, validación del email,
 (recursos HTTP, esquema de validación, autenticación y repositorio SQLAlchemy). El email se normaliza a
 minúsculas y sin espacios al guardar y al consultar.
 
-**Pruebas unitarias.** La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`. Cada
-endpoint tiene sus escenarios: respuestas correctas, validaciones, duplicados, normalización del email,
-las cinco variantes de credencial inválida (401) y que `/ping` no consulta la base. Las pruebas usan
-SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. Antes de configurar
-el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni base de datos, como
-el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por archivo y en orden
-inverso.
+### 1.1 Pruebas por endpoint
+
+Cubre el punto 1 de la configuración (30 %): cada endpoint tiene escenarios de prueba unitaria para todas
+las respuestas de su contrato. La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`: 39 son
+de la API (23 en `tests/test_blacklist_api.py`, 10 casos de credencial inválida en
+`tests/test_authentication.py` y 6 en `tests/test_ping.py`) y las otras 58 cubren la configuración, el
+dominio y los scripts de empaquetado y monitoreo.
+
+| Endpoint | Respuesta | Escenario | Prueba representativa |
+|---|---|---|---|
+| `POST /blacklists` | 201 | Alta correcta, con mensaje e id; la IP y la fecha se prueban aparte | `test_post_adds_email_and_returns_id` |
+| | 400 | Email inválido o campos faltantes | `test_post_rejects_invalid_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_post_rejects_invalid_credentials_with_unauthorized` |
+| | 409 | Email duplicado, también con otras mayúsculas o espacios | `test_post_duplicated_email_returns_conflict` |
+| `GET /blacklists/<email>` | 200 | Email en la lista, con su motivo | `test_get_returns_true_and_reason_for_blacklisted_email` |
+| | 200 | Email que no está en la lista | `test_get_returns_false_for_unknown_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_get_rejects_invalid_credentials_with_unauthorized` |
+| `GET /ping` | 200 | Sin token, solo con la versión y sin consultar la base | `test_ping_does_not_query_the_database` |
+
+Las pruebas usan SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red.
+Antes de configurar el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni
+base de datos, como el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por
+archivo y en orden inverso. En el pipeline corren en cada build: en la ejecución exitosa pasaron las 97
+(sección 6.2 y figura 6.5), y en la fallida el registro identifica la prueba que falló (sección 7.2).
 
 ## 2. Arquitectura de la integración continua
 
@@ -109,7 +126,9 @@ Los dos disparadores están comprobados, sin intervención manual: el *merge* de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
 causa identificada; el siguiente pull request hacia `main`, el #164, sí inició la ejecución `901438a7`, y el
-*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito.
+*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito. Con la versión 2
+del pipeline, el *push* del commit `3db0adb`, que solo cambió documentación, inició la ejecución `19089be6`
+(sección 5.3).
 
 El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
 quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
@@ -164,7 +183,8 @@ Notas aclaratorias:
 - **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
   mientras se trabaja y se graba el video: para esta entrega se volvió a provisionar el 23 de octubre de
   2026, con la misma URL, y se apaga después de grabar, así que puede no responder durante la
-  calificación. El pipeline de integración continua no depende del entorno.
+  calificación. El pipeline de integración continua no depende del entorno. La raíz de la URL responde
+  404 porque el API no define esa ruta; `/ping` responde con la versión desplegada.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 - **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
@@ -181,8 +201,8 @@ recursos se crearon en octubre de 2026: el bucket y los roles el 22, el proyecto
 pipeline el 24; la conexión ya estaba disponible el 21. El bucket, la conexión y los roles se crearon en
 la consola de AWS, y el proyecto de CodeBuild y el pipeline con la CLI de la misma cuenta, verificados
 después en la consola. Los bloques de comandos de esta sección son el equivalente en la CLI de lo que se
-hizo en la consola: desde una terminal local llevan `--profile blacklist`, el perfil de la cuenta del
-proyecto, y en AWS CloudShell no hace falta.
+hizo en la consola, y en el proyecto y el pipeline, los comandos que se usaron: desde una terminal local
+llevan `--profile blacklist`, el perfil de la cuenta del proyecto, y en AWS CloudShell no hace falta.
 
 ### 4.1 Orden de creación y dependencias
 
@@ -197,9 +217,9 @@ proyecto, y en AWS CloudShell no hace falta.
 La conexión se crea antes que los roles porque la política del rol de CodePipeline usa su ARN, que lleva
 un identificador que AWS genera en ese momento: si la conexión se reemplaza, el ARN cambia. Los ARN del
 proyecto y del pipeline se forman con su nombre, así que sus políticas se pueden escribir de antemano.
-Ese orden no se respetó en el primer intento: la conexión se creó con un espacio al final del nombre y
-hubo que eliminarla y crearla otra vez con el mismo nombre. Las capturas de esta sección son de la
-conexión vigente.
+En el primer intento la conexión se creó con un espacio al final del nombre; como el nombre no se puede
+cambiar, se eliminó y se creó otra con el mismo nombre antes de escribir las políticas de los roles. Las
+capturas de esta sección son de la conexión vigente.
 
 ### 4.2 Bucket de artefactos
 
@@ -373,8 +393,7 @@ pipeline termina cuando el paquete queda en el bucket. Se crea con un archivo de
 aws codepipeline create-pipeline --region us-east-2 --cli-input-json file://pipeline.json
 ```
 
-Su contenido, los disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la
-sección 5.
+Sus disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la sección 5.
 
 Los cinco recursos se comprueban con consultas de solo lectura, que se pueden repetir sin cambiar nada.
 Las de S3, CodeConnections, CodeBuild y CodePipeline llevan `--region us-east-2`:
@@ -474,8 +493,8 @@ código por la conexión `blacklist-devops-github`:
 
 El *push* a `main` no excluye ninguna ruta porque el enunciado pide que cada commit en la rama principal
 inicie el build; así, una promoción de solo documentación también lo dispara. Esta es la versión 2 del
-pipeline: se creó con las rutas excluidas también en el *push* y después se quitó esa exclusión
-(`docs/ci/1.11-pipeline.md`, sección 5.2). El *pull request* conserva las exclusiones: un PR que solo cambia
+pipeline: se creó con las rutas excluidas también en el *push* y el 27 de octubre de 2026 se quitó esa
+exclusión (sección 2). El *pull request* conserva las exclusiones: un PR que solo cambia
 documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
 
 ![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
@@ -585,9 +604,11 @@ CodePipeline guardó la salida del build en el bucket del proyecto como
 Fuera del pipeline, el paquete se extrajo de ese objeto, se subió como versión `b0e9d03` de la
 aplicación y se desplegó en `Blacklist-devops-env`: el despliegue tardó 54 segundos, las tres instancias
 quedaron con salud *Ok* y `/ping` responde `{"version": "b0e9d03"}`. Contra ese entorno, la colección de
-Postman pasó 22 de 22 pruebas.
+Postman pasó 22 de 22 pruebas (figura 6.9).
 
 ![Figura 6.8. /ping responde la versión del artefacto desplegado](capturas/entrega-2/2.11-ping-version.png)
+
+![Figura 6.9. Colección de Postman contra el entorno de Beanstalk con blacklist-aws: 22 de 22 pruebas aprobadas](capturas/entrega-2/2.12-postman-runner-resumen.png)
 
 ### 6.4 Hallazgos
 
