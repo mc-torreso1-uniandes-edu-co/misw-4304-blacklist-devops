@@ -361,7 +361,7 @@ identificador del commit lo inyecta el pipeline.
 
 La página del proyecto muestra un aviso azul que indica que el sistema operativo anfitrión es Amazon Linux
 2 y recomienda pasar a Amazon Linux 2023. Es informativo y no afecta el build: la imagen del entorno ya es
-`standard:6.0`, que resuelve Python 3.13.16 (sección 6). No es el aviso de características avanzadas del
+`standard:6.0`, que trae Python 3.13 (secciones 5.1 y 6). No es el aviso de características avanzadas del
 plan gratuito, que no apareció en ninguna pantalla.
 
 Equivalente en la CLI:
@@ -440,6 +440,8 @@ phases:
     runtime-versions:
       python: "3.13"
     commands:
+      - MAKE_OPTS="-j$(nproc)" pyenv install --skip-existing "$(cat .python-version)"
+      - python --version
       - pip install -r requirements-dev.txt
   build:
     commands:
@@ -458,7 +460,7 @@ artifacts:
 | Parte | Qué hace |
 |---|---|
 | `env` | Ejecuta los comandos con `bash` y fija `APP_ENV=testing`: la aplicación usa la configuración de pruebas, con SQLite en memoria, sin base de datos ni secretos |
-| `install` | Selecciona Python 3.13 en la imagen administrada e instala las dependencias de `requirements-dev.txt` |
+| `install` | Selecciona Python 3.13 en la imagen administrada. Si la imagen no trae la versión de `.python-version` (3.13.16), pyenv la compila; `--skip-existing` omite ese paso cuando ya está. Imprime la versión usada e instala las dependencias de `requirements-dev.txt` |
 | `build`: pruebas | `pytest -q --cov=app` ejecuta las 97 pruebas con la cobertura del paquete `app`. Si una falla, la fase se detiene: no se genera el paquete ni se sube artefacto |
 | `build`: `COMMIT_ID` | Comprueba que el pipeline entregó el identificador del commit, después de las pruebas para que un fallo de prueba se vea como tal y no como una variable ausente. Si falta, el build falla con un mensaje claro |
 | `build`: etiqueta | Toma los siete primeros caracteres de `COMMIT_ID`. El origen llega al build sin la carpeta `.git`, por eso el identificador lo pasa la acción de construcción del pipeline (`#{SourceVariables.CommitId}`) |
@@ -467,6 +469,23 @@ artifacts:
 
 El archivo no tiene fase de despliegue ni llama a la CLI de AWS: el pipeline termina al generar el artefacto,
 como exige el enunciado.
+
+**Cambio del 29 de octubre de 2026: instalación de Python 3.13.16.** Las ejecuciones de las secciones 6 y 7
+usaron el archivo sin las dos primeras líneas de `install`. El 29 de octubre, AWS actualizó la imagen
+`standard:6.0` y dejó de traer Python 3.13.16. pyenv toma la versión del archivo `.python-version` del
+repositorio antes que la que fija `runtime-versions`, así que la instalación de dependencias empezó a fallar:
+
+```text
+pyenv: version `3.13.16' is not installed (set by /codebuild/output/src3930715547/src/.python-version)
+Phase: INSTALL, Code: COMMAND_EXECUTION_ERROR, Message: Error while executing command: pip install -r requirements-dev.txt
+```
+
+Fallaron así los builds 7, 8 y 9, iniciados por los pull requests #177, #178 y #179. El último build exitoso
+con la imagen anterior fue el del 27 de octubre (`1231fae0`), con 3.13.16. El pull request #180 agregó la
+compilación de la versión de `.python-version` y su build, el número 10
+(`blacklist-devops-ci-build:8f7ad958-ec22-4276-9ee0-297ab8d2e244`), terminó en *Succeeded*: compiló Python
+3.13.16, pasaron las 97 pruebas con cobertura del 100 % y generó `dist/app-fb6c346.zip`, con 31 archivos. La
+fase `INSTALL` pasó de 19 segundos a 205, y la ejecución del pipeline (`61173fbf`) tardó 4 minutos 13 segundos.
 
 La configuración del proyecto de CodeBuild que ejecuta este archivo está en la figura 4.9, y el registro del
 build, con las pruebas, la cobertura y el contenido del paquete, en las figuras 6.5 y 6.6.
@@ -496,6 +515,8 @@ inicie el build; así, una promoción de solo documentación también lo dispara
 pipeline: se creó con las rutas excluidas también en el *push* y el 27 de octubre de 2026 se quitó esa
 exclusión (sección 2). El *pull request* conserva las exclusiones: un PR que solo cambia
 documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
+La excepción es el README de la raíz del repositorio: el patrón `**/*.md` no lo excluye, y los pull requests #177, #178 y
+#179, que solo cambiaban documentación y el README, iniciaron el pipeline.
 
 ![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
 
@@ -578,7 +599,8 @@ Phase complete: UPLOAD_ARTIFACTS State: SUCCEEDED
 ```
 
 En esta ejecución el `buildspec.yml` todavía verificaba `COMMIT_ID` antes de las pruebas; el ajuste del
-pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado.
+pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado. Tampoco tenía la
+compilación de Python 3.13.16 en `install`, que agregó el pull request #180 (sección 5.1).
 
 ![Figura 6.4. Fases del build con su duración](capturas/entrega-2/2.6-codebuild-fases.png)
 
@@ -618,7 +640,8 @@ Postman pasó 22 de 22 pruebas (figura 6.9).
    `INSTALL` (`pip install` sin caché); las pruebas y el empaquetado tardan menos de un segundo cada uno.
    Para el tamaño de este proyecto no hace falta caché.
 3. **Python 3.13 está disponible en la imagen administrada.** `runtime-versions` resolvió Python
-   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk.
+   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk. El 29 de octubre la
+   imagen dejó de traerla y hubo que compilarla en el build (sección 5.1).
 4. **Las pruebas corren sin servicios externos.** El proyecto de CodeBuild no define la cadena de
    conexión a la base ni secretos: la suite usó SQLite en memoria.
 5. **El paquete queda dentro del objeto del pipeline.** CodePipeline guarda la salida con un nombre
@@ -765,7 +788,8 @@ las limitaciones conocidas de la solución, con su efecto y cómo se manejan.
 | Modo de ejecución `QUEUED` | `SUPERSEDED`, el modo por defecto | Cada commit queda con su propia ejecución y su propio resultado; ninguno reemplaza a otro |
 | Verificar `COMMIT_ID` después de `pytest` (pull request #154) | Verificarlo al inicio de la fase `build` | Si fallan las pruebas, el registro muestra la prueba y no una variable ausente (sección 7.5) |
 | Etiquetar el paquete con los siete primeros caracteres del commit, en el nombre y en `VERSION` | Una numeración propia o la fecha | Del entorno se llega al commit sin consultar otra fuente: `/ping` responde la misma etiqueta |
-| Cómputo `BUILD_GENERAL1_SMALL`, sin caché | Un cómputo mayor o caché de dependencias | El build dura 30 segundos y la suite no necesita más recursos; la caché agregaría configuración para ahorrar parte de los 19 segundos de instalación |
+| Cómputo `BUILD_GENERAL1_SMALL`, sin caché | Un cómputo mayor o caché de dependencias | El build duraba 30 segundos y la suite no necesita más recursos; la caché agregaba configuración para ahorrar parte de los 19 segundos de instalación. Desde que compila Python (sección 5.1) dura unos 3 minutos y medio; una caché del intérprete ahorraría ese tiempo, pero no se agregó a pocos días de la entrega |
+| Compilar en el build la versión de `.python-version` (pull request #180) | Usar el parche de Python 3.13 que trae la imagen | El build usa la misma versión que el equipo en local y que este documento; el costo son unos 3 minutos por build, y si la imagen vuelve a traer 3.13.16 no compila |
 | Provocar el fallo con un pull request cerrado sin fusionar | Un commit con la prueba rota en `dev` o en `main`, o un build lanzado a mano | La prueba rota no toca las ramas protegidas y se obtiene una ejecución del pipeline, que es lo que pide el punto 2 del documento (sección 7.1) |
 | Encender el entorno de Beanstalk solo para trabajar y grabar | Dejarlo encendido durante toda la entrega | Sigue la aclaración del tutor sobre los recursos de AWS y el plan gratuito; el pipeline no depende del entorno (sección 3) |
 
@@ -786,19 +810,24 @@ las limitaciones conocidas de la solución, con su efecto y cómo se manejan.
    sin `--cov-fail-under`) ni ejecuta análisis estático o revisión de vulnerabilidades de las dependencias.
    Hoy la cobertura es del 100 %, pero si bajara, el build no fallaría.
 5. **El disparador de pull request no está explicado del todo.** El #156 hacia `main` no inició ninguna
-   ejecución y no se identificó la causa, y el evento `UPDATED` no se verificó (sección 5.3). El punto 4 de la
-   configuración no depende de este disparador.
+   ejecución y no se identificó la causa, y el evento `UPDATED` no se verificó (sección 5.3). Además, `**/*.md`
+   no excluye el README de la raíz. El punto 4 de la configuración no depende de este disparador.
 6. **El bucket acumula objetos.** No tiene versionado ni reglas de ciclo de vida: cada ejecución deja el
    código de origen (`SourceArti/`) y, si el build pasa, el paquete (`BuildArtif/`). Con el volumen de esta
    entrega el espacio es despreciable; con un uso continuo haría falta una regla de expiración.
 7. **El entorno puede no responder durante la calificación.** Se apaga después de grabar. El pipeline, el
    bucket y los registros del build siguen disponibles.
+8. **La imagen administrada cambia sin aviso.** `standard:6.0` fija la versión menor de Python, no el parche,
+   y AWS la actualiza sin cambiar el nombre. El 29 de octubre dejó de traer 3.13.16 y tres builds fallaron
+   sin ningún cambio de código (sección 5.1). Compilar una versión fija protege el build, a costa de unos 3 minutos
+   por build; las alternativas son una imagen propia o una caché del intérprete.
 
 ## 9. Conclusiones
 
 1. **La integración continua cumple lo que pide la entrega.** Cada commit en `main` inicia el pipeline sin
    intervención manual; CodeBuild ejecuta las 97 pruebas y, si pasan, deja `app-<commit>.zip` en S3. Una
-   ejecución completa tarda entre 38 segundos y poco más de un minuto.
+   ejecución completa tardaba entre 38 segundos y poco más de un minuto; desde que el build compila Python
+   3.13.16 (sección 5.1), poco más de 4 minutos.
 2. **Lo que se despliega es lo que se probó.** El paquete solo se genera después de que pasan las pruebas,
    en el mismo build y con el mismo código. La ejecución fallida lo confirmó: con una prueba rota no hubo
    paquete ni cambios en las ramas.
