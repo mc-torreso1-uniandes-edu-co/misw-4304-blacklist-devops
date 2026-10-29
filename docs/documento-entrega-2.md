@@ -10,7 +10,7 @@
 
 ## Contenido
 
-1. Descripción del microservicio
+1. Descripción del microservicio y pruebas por endpoint (punto 1 de la configuración, 30 %)
 2. Arquitectura de la integración continua
 3. Enlaces de la entrega
 4. Configuración en AWS (punto 2 de la configuración, 10 %)
@@ -20,7 +20,7 @@
 8. Limitaciones y decisiones
 9. Conclusiones
 
-## 1. Descripción del microservicio
+## 1. Descripción del microservicio y pruebas por endpoint
 
 El microservicio administra la lista negra global de emails de la organización. Los sistemas internos
 lo usan para agregar un email a la lista y para consultar si un email está en ella. Es un único
@@ -46,13 +46,30 @@ El código está organizado por capas: `domain` (entidad, validación del email,
 (recursos HTTP, esquema de validación, autenticación y repositorio SQLAlchemy). El email se normaliza a
 minúsculas y sin espacios al guardar y al consultar.
 
-**Pruebas unitarias.** La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`. Cada
-endpoint tiene sus escenarios: respuestas correctas, validaciones, duplicados, normalización del email,
-las cinco variantes de credencial inválida (401) y que `/ping` no consulta la base. Las pruebas usan
-SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red. Antes de configurar
-el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni base de datos, como
-el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por archivo y en orden
-inverso.
+### 1.1 Pruebas por endpoint
+
+Cubre el punto 1 de la configuración (30 %): cada endpoint tiene escenarios de prueba unitaria para todas
+las respuestas de su contrato. La suite tiene 97 pruebas, con 100 % de cobertura del paquete `app`: 39 son
+de la API (23 en `tests/test_blacklist_api.py`, 10 casos de credencial inválida en
+`tests/test_authentication.py` y 6 en `tests/test_ping.py`) y las otras 58 cubren la configuración, el
+dominio y los scripts de empaquetado y monitoreo.
+
+| Endpoint | Respuesta | Escenario | Prueba representativa |
+|---|---|---|---|
+| `POST /blacklists` | 201 | Alta correcta, con mensaje e id; la IP y la fecha se prueban aparte | `test_post_adds_email_and_returns_id` |
+| | 400 | Email inválido o campos faltantes | `test_post_rejects_invalid_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_post_rejects_invalid_credentials_with_unauthorized` |
+| | 409 | Email duplicado, también con otras mayúsculas o espacios | `test_post_duplicated_email_returns_conflict` |
+| `GET /blacklists/<email>` | 200 | Email en la lista, con su motivo | `test_get_returns_true_and_reason_for_blacklisted_email` |
+| | 200 | Email que no está en la lista | `test_get_returns_false_for_unknown_email` |
+| | 401 | Cinco variantes de credencial inválida | `test_get_rejects_invalid_credentials_with_unauthorized` |
+| `GET /ping` | 200 | Sin token, solo con la versión y sin consultar la base | `test_ping_does_not_query_the_database` |
+
+Las pruebas usan SQLite en memoria, así que no dependen de un servidor de base de datos ni de la red.
+Antes de configurar el pipeline, la suite se ejecutó en un entorno limpio con Python 3.13.16, sin red ni
+base de datos, como el de CodeBuild: pasaron las 97 pruebas en tres ejecuciones seguidas, archivo por
+archivo y en orden inverso. En el pipeline corren en cada build: en la ejecución exitosa pasaron las 97
+(sección 6.2 y figura 6.5), y en la fallida el registro identifica la prueba que falló (sección 7.2).
 
 ## 2. Arquitectura de la integración continua
 
@@ -109,7 +126,9 @@ Los dos disparadores están comprobados, sin intervención manual: el *merge* de
 `test/build-fallido` hacia `dev` inició la ejecución fallida con el evento `PULL_REQUEST_CREATED`
 (sección 7). Al abrir el pull request de promoción #156 hacia `main` no se inició ninguna ejecución, sin
 causa identificada; el siguiente pull request hacia `main`, el #164, sí inició la ejecución `901438a7`, y el
-*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito.
+*push* de su fusión (`625e8c4`) inició otra, la `8d6a7974`. Las dos terminaron con éxito. Con la versión 2
+del pipeline, el *push* del commit `3db0adb`, que solo cambió documentación, inició la ejecución `19089be6`
+(sección 5.3).
 
 El pipeline se creó con la exclusión de rutas también en el *push* a `main`. El 27 de octubre de 2026 se
 quitó (versión 2 del pipeline), porque con ella un commit de solo documentación en la rama principal no
@@ -152,7 +171,8 @@ iniciaba el build, y el enunciado pide que lo haga cada commit.
 | URL del entorno | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación | [PENDIENTE: tarea 4.5 (#130).] |
+| Video de sustentación (SharePoint de la Universidad) | https://uniandes.sharepoint.com/:v:/s/ProyectoDevOps-MISO/IQBlZXxBdOq4TqZwj9LTdjXpAdfD5Y5HXVS_hBVJWQKQbOA?e=urS1d2 |
+| Video de sustentación (YouTube) | https://youtu.be/FreR5w8jJE4 |
 
 Notas aclaratorias:
 
@@ -163,9 +183,14 @@ Notas aclaratorias:
 - **Entorno.** Según la aclaración del tutor sobre los recursos de AWS, el entorno solo está encendido
   mientras se trabaja y se graba el video: para esta entrega se volvió a provisionar el 23 de octubre de
   2026, con la misma URL, y se apaga después de grabar, así que puede no responder durante la
-  calificación. El pipeline de integración continua no depende del entorno.
+  calificación. El pipeline de integración continua no depende del entorno. La raíz de la URL responde
+  404 porque el API no define esa ruta; `/ping` responde con la versión desplegada.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
+- **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
+  Teams/SharePoint de la Universidad, con acceso para las personas de la Universidad de los Andes
+  (solo vista). El segundo está en YouTube, como copia de respaldo para quien no pueda abrir el de
+  la Universidad.
 
 ## 4. Configuración en AWS
 
@@ -176,8 +201,8 @@ recursos se crearon en octubre de 2026: el bucket y los roles el 22, el proyecto
 pipeline el 24; la conexión ya estaba disponible el 21. El bucket, la conexión y los roles se crearon en
 la consola de AWS, y el proyecto de CodeBuild y el pipeline con la CLI de la misma cuenta, verificados
 después en la consola. Los bloques de comandos de esta sección son el equivalente en la CLI de lo que se
-hizo en la consola: desde una terminal local llevan `--profile blacklist`, el perfil de la cuenta del
-proyecto, y en AWS CloudShell no hace falta.
+hizo en la consola, y en el proyecto y el pipeline, los comandos que se usaron: desde una terminal local
+llevan `--profile blacklist`, el perfil de la cuenta del proyecto, y en AWS CloudShell no hace falta.
 
 ### 4.1 Orden de creación y dependencias
 
@@ -192,9 +217,9 @@ proyecto, y en AWS CloudShell no hace falta.
 La conexión se crea antes que los roles porque la política del rol de CodePipeline usa su ARN, que lleva
 un identificador que AWS genera en ese momento: si la conexión se reemplaza, el ARN cambia. Los ARN del
 proyecto y del pipeline se forman con su nombre, así que sus políticas se pueden escribir de antemano.
-Ese orden no se respetó en el primer intento: la conexión se creó con un espacio al final del nombre y
-hubo que eliminarla y crearla otra vez con el mismo nombre. Las capturas de esta sección son de la
-conexión vigente.
+En el primer intento la conexión se creó con un espacio al final del nombre; como el nombre no se puede
+cambiar, se eliminó y se creó otra con el mismo nombre antes de escribir las políticas de los roles. Las
+capturas de esta sección son de la conexión vigente.
 
 ### 4.2 Bucket de artefactos
 
@@ -336,7 +361,7 @@ identificador del commit lo inyecta el pipeline.
 
 La página del proyecto muestra un aviso azul que indica que el sistema operativo anfitrión es Amazon Linux
 2 y recomienda pasar a Amazon Linux 2023. Es informativo y no afecta el build: la imagen del entorno ya es
-`standard:6.0`, que resuelve Python 3.13.16 (sección 6). No es el aviso de características avanzadas del
+`standard:6.0`, que trae Python 3.13 (secciones 5.1 y 6). No es el aviso de características avanzadas del
 plan gratuito, que no apareció en ninguna pantalla.
 
 Equivalente en la CLI:
@@ -368,8 +393,7 @@ pipeline termina cuando el paquete queda en el bucket. Se crea con un archivo de
 aws codepipeline create-pipeline --region us-east-2 --cli-input-json file://pipeline.json
 ```
 
-Su contenido, los disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la
-sección 5.
+Sus disparadores de *push* y de *pull request* y la evidencia de que se ejecutan están en la sección 5.
 
 Los cinco recursos se comprueban con consultas de solo lectura, que se pueden repetir sin cambiar nada.
 Las de S3, CodeConnections, CodeBuild y CodePipeline llevan `--region us-east-2`:
@@ -393,7 +417,126 @@ proyecto.
 
 ## 5. Archivo de construcción y disparo automático
 
-[PENDIENTE: tarea 3.3 (#119).]
+Cubre los puntos 3 (25 %) y 4 (15 %) de la configuración: un archivo de construcción versionado en el
+repositorio, que ejecuta las pruebas unitarias y genera el artefacto sin desplegarlo, y el disparo
+automático del build con cada commit en la rama principal.
+
+### 5.1 El archivo de construcción
+
+El `buildspec.yml` está en la raíz del repositorio, en `main` y en `dev`. El proyecto de CodeBuild
+`blacklist-devops-ci-build` no define comandos propios: ejecuta este archivo, que llega con el código de
+cada commit.
+
+```yaml
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    APP_ENV: "testing"
+
+phases:
+  install:
+    runtime-versions:
+      python: "3.13"
+    commands:
+      - MAKE_OPTS="-j$(nproc)" pyenv install --skip-existing "$(cat .python-version)"
+      - python --version
+      - pip install -r requirements-dev.txt
+  build:
+    commands:
+      - python -m pytest -q --cov=app
+      - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
+      - ETIQUETA="${COMMIT_ID:0:7}"
+      - python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
+      - python -m zipfile -l "dist/app-${ETIQUETA}.zip"
+
+artifacts:
+  files:
+    - dist/app-*.zip
+  discard-paths: yes
+```
+
+| Parte | Qué hace |
+|---|---|
+| `env` | Ejecuta los comandos con `bash` y fija `APP_ENV=testing`: la aplicación usa la configuración de pruebas, con SQLite en memoria, sin base de datos ni secretos |
+| `install` | Selecciona Python 3.13 en la imagen administrada. Si la imagen no trae la versión de `.python-version` (3.13.16), pyenv la compila; `--skip-existing` omite ese paso cuando ya está. Imprime la versión usada e instala las dependencias de `requirements-dev.txt` |
+| `build`: pruebas | `pytest -q --cov=app` ejecuta las 97 pruebas con la cobertura del paquete `app`. Si una falla, la fase se detiene: no se genera el paquete ni se sube artefacto |
+| `build`: `COMMIT_ID` | Comprueba que el pipeline entregó el identificador del commit, después de las pruebas para que un fallo de prueba se vea como tal y no como una variable ausente. Si falta, el build falla con un mensaje claro |
+| `build`: etiqueta | Toma los siete primeros caracteres de `COMMIT_ID`. El origen llega al build sin la carpeta `.git`, por eso el identificador lo pasa la acción de construcción del pipeline (`#{SourceVariables.CommitId}`) |
+| `build`: paquete | `scripts/empaquetar.py` genera `dist/app-<commit>.zip`. Lleva `--omitir-pruebas` porque las pruebas ya corrieron en el paso anterior. `python -m zipfile -l` deja el contenido del paquete en los registros |
+| `artifacts` | Declara `dist/app-*.zip` como salida del build; el pipeline la guarda como `BuildArtifact` en el bucket de S3 |
+
+El archivo no tiene fase de despliegue ni llama a la CLI de AWS: el pipeline termina al generar el artefacto,
+como exige el enunciado.
+
+**Cambio del 29 de octubre de 2026: instalación de Python 3.13.16.** Las ejecuciones de las secciones 6 y 7
+usaron el archivo sin las dos primeras líneas de `install`. El 29 de octubre, AWS actualizó la imagen
+`standard:6.0` y dejó de traer Python 3.13.16. pyenv toma la versión del archivo `.python-version` del
+repositorio antes que la que fija `runtime-versions`, así que la instalación de dependencias empezó a fallar:
+
+```text
+pyenv: version `3.13.16' is not installed (set by /codebuild/output/src3930715547/src/.python-version)
+Phase: INSTALL, Code: COMMAND_EXECUTION_ERROR, Message: Error while executing command: pip install -r requirements-dev.txt
+```
+
+Fallaron así los builds 7, 8 y 9, iniciados por los pull requests #177, #178 y #179. El último build exitoso
+con la imagen anterior fue el del 27 de octubre (`1231fae0`), con 3.13.16. El pull request #180 agregó la
+compilación de la versión de `.python-version` y su build, el número 10
+(`blacklist-devops-ci-build:8f7ad958-ec22-4276-9ee0-297ab8d2e244`), terminó en *Succeeded*: compiló Python
+3.13.16, pasaron las 97 pruebas con cobertura del 100 % y generó `dist/app-fb6c346.zip`, con 31 archivos. La
+fase `INSTALL` pasó de 19 segundos a 205, y la ejecución del pipeline (`61173fbf`) tardó 4 minutos 13 segundos.
+
+La configuración del proyecto de CodeBuild que ejecuta este archivo está en la figura 4.9, y el registro del
+build, con las pruebas, la cobertura y el contenido del paquete, en las figuras 6.5 y 6.6.
+
+### 5.2 El artefacto
+
+`scripts/empaquetar.py` arma el paquete a partir de una lista explícita de entradas: `application.py`, `app/`,
+`requirements.txt`, `Procfile` y `.ebextensions/`, y escribe dentro el archivo `VERSION` con la etiqueta. En las
+carpetas solo entran archivos `.py` y `.config`. No entran `tests/`, `docs/`, `scripts/`, `postman/`, `.env`,
+`.venv` ni bases de datos locales.
+
+En la ejecución exitosa el paquete fue `app-b0e9d03.zip`, con 31 archivos y `VERSION = b0e9d03`; la
+verificación completa está en la sección 6.3. En la ejecución fallida no se generó ningún artefacto (sección 7.3).
+
+### 5.3 Disparo automático
+
+El disparo lo hace AWS CodePipeline V2 con dos disparadores de Git sobre la acción de origen, que obtiene el
+código por la conexión `blacklist-devops-github`:
+
+| Disparador | Eventos | Ramas de destino | Rutas excluidas |
+|---|---|---|---|
+| *Push* | Push | `main` | Ninguna |
+| *Pull request* | Abierto (`OPEN`) y actualizado (`UPDATED`) | `dev` y `main` | `docs/**`, `postman/**`, `**/*.md` |
+
+El *push* a `main` no excluye ninguna ruta porque el enunciado pide que cada commit en la rama principal
+inicie el build; así, una promoción de solo documentación también lo dispara. Esta es la versión 2 del
+pipeline: se creó con las rutas excluidas también en el *push* y el 27 de octubre de 2026 se quitó esa
+exclusión (sección 2). El *pull request* conserva las exclusiones: un PR que solo cambia
+documentación no consume minutos de construcción, y al fusionarlo el *push* a `main` ejecuta el build completo.
+La excepción es el README de la raíz del repositorio: el patrón `**/*.md` no lo excluye, y los pull requests #177, #178 y
+#179, que solo cambiaban documentación y el README, iniciaron el pipeline.
+
+![Figura 5.1. Disparadores de Git del pipeline en la versión 2: push a main sin rutas excluidas y pull request con sus rutas excluidas](capturas/entrega-2/1.11-pipeline-desencadenadores-v2.png)
+
+**Evidencia del punto 4.** Un commit en `main` inicia el build sin intervención manual, también cuando solo
+cambia documentación:
+
+- **Commit de solo documentación, con la versión 2.** El 27 de octubre de 2026 se fusionó en `main` la promoción
+  #172, que creó el commit `3db0adb`. Ese commit solo cambió archivos de `docs/`, rutas que la versión 1 excluía.
+  Su *push* inició la ejecución `19089be6` a las 18:50 (UTC-05:00), que terminó correctamente a las 18:51, en
+  1 minuto 8 segundos.
+- **Commit de código, con la versión 1.** El *merge* de la promoción #156 creó el commit `b0e9d03` y 5 segundos
+  después inició la ejecución `ff3146a4-74b7-458f-927e-980fee5eb56d`, que terminó en *Succeeded*. El commit, la
+  ejecución y el historial están en las figuras 6.1 a 6.3 de la sección 6.1.
+
+![Figura 5.2. Historial del pipeline: la ejecución 19089be6, iniciada por el push del commit 3db0adb en main (promoción solo de documentación)](capturas/entrega-2/1.11-push-sin-filtro-ejecucion.png)
+
+**Pull request.** El pull request #160 hacia `dev` inició la ejecución fallida con el evento
+`PULL_REQUEST_CREATED` (sección 7.1), y el #164 hacia `main` inició la ejecución `901438a7`. El #156 hacia `main`
+no inició ninguna y su causa no está identificada. El evento `UPDATED` no se verificó. El punto 4 de la
+configuración no depende de los pull requests: se cumple con el *push* a `main`.
 
 ## 6. Pipeline exitoso
 
@@ -456,7 +599,8 @@ Phase complete: UPLOAD_ARTIFACTS State: SUCCEEDED
 ```
 
 En esta ejecución el `buildspec.yml` todavía verificaba `COMMIT_ID` antes de las pruebas; el ajuste del
-pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado.
+pull request #154 movió esa verificación a después de `pytest`, sin cambiar el resultado. Tampoco tenía la
+compilación de Python 3.13.16 en `install`, que agregó el pull request #180 (sección 5.1).
 
 ![Figura 6.4. Fases del build con su duración](capturas/entrega-2/2.6-codebuild-fases.png)
 
@@ -482,9 +626,11 @@ CodePipeline guardó la salida del build en el bucket del proyecto como
 Fuera del pipeline, el paquete se extrajo de ese objeto, se subió como versión `b0e9d03` de la
 aplicación y se desplegó en `Blacklist-devops-env`: el despliegue tardó 54 segundos, las tres instancias
 quedaron con salud *Ok* y `/ping` responde `{"version": "b0e9d03"}`. Contra ese entorno, la colección de
-Postman pasó 22 de 22 pruebas.
+Postman pasó 22 de 22 pruebas (figura 6.9).
 
 ![Figura 6.8. /ping responde la versión del artefacto desplegado](capturas/entrega-2/2.11-ping-version.png)
+
+![Figura 6.9. Colección de Postman contra el entorno de Beanstalk con blacklist-aws: 22 de 22 pruebas aprobadas](capturas/entrega-2/2.12-postman-runner-resumen.png)
 
 ### 6.4 Hallazgos
 
@@ -494,7 +640,8 @@ Postman pasó 22 de 22 pruebas.
    `INSTALL` (`pip install` sin caché); las pruebas y el empaquetado tardan menos de un segundo cada uno.
    Para el tamaño de este proyecto no hace falta caché.
 3. **Python 3.13 está disponible en la imagen administrada.** `runtime-versions` resolvió Python
-   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk.
+   3.13.16, la misma versión que usa el equipo en local y la plataforma de Beanstalk. El 29 de octubre la
+   imagen dejó de traerla y hubo que compilarla en el build (sección 5.1).
 4. **Las pruebas corren sin servicios externos.** El proyecto de CodeBuild no define la cadena de
    conexión a la base ni secretos: la suite usó SQLite en memoria.
 5. **El paquete queda dentro del objeto del pipeline.** CodePipeline guarda la salida con un nombre
@@ -629,8 +776,71 @@ nuevo en el bucket es el código de origen que la etapa Source deja como entrada
 
 ## 8. Limitaciones y decisiones
 
-[PENDIENTE: tarea 3.6 (#122).]
+Esta sección reúne las decisiones de la entrega que no son de arquitectura (esas están en la sección 2) y
+las limitaciones conocidas de la solución, con su efecto y cómo se manejan.
+
+### 8.1 Decisiones
+
+| Decisión | Alternativa descartada | Motivo |
+|---|---|---|
+| Disparar con cada *push* a `main`, sin rutas excluidas (versión 2 del pipeline) | Mantener la exclusión de `docs/**`, `postman/**` y `**/*.md` también en el *push* | El enunciado pide que cada commit en la rama principal inicie el build; con la exclusión, una promoción de solo documentación no lo iniciaba (secciones 2 y 5.3) |
+| Validar también los pull requests hacia `dev` y `main`, sin los cambios de solo documentación | Validar solo después de fusionar | Una prueba rota se detecta antes de llegar a las ramas protegidas, sin gastar minutos de construcción en cambios de documentación |
+| Modo de ejecución `QUEUED` | `SUPERSEDED`, el modo por defecto | Cada commit queda con su propia ejecución y su propio resultado; ninguno reemplaza a otro |
+| Verificar `COMMIT_ID` después de `pytest` (pull request #154) | Verificarlo al inicio de la fase `build` | Si fallan las pruebas, el registro muestra la prueba y no una variable ausente (sección 7.5) |
+| Etiquetar el paquete con los siete primeros caracteres del commit, en el nombre y en `VERSION` | Una numeración propia o la fecha | Del entorno se llega al commit sin consultar otra fuente: `/ping` responde la misma etiqueta |
+| Cómputo `BUILD_GENERAL1_SMALL`, sin caché | Un cómputo mayor o caché de dependencias | El build duraba 30 segundos y la suite no necesita más recursos; la caché agregaba configuración para ahorrar parte de los 19 segundos de instalación. Desde que compila Python (sección 5.1) dura unos 3 minutos y medio; una caché del intérprete ahorraría ese tiempo, pero no se agregó a pocos días de la entrega |
+| Compilar en el build la versión de `.python-version` (pull request #180) | Usar el parche de Python 3.13 que trae la imagen | El build usa la misma versión que el equipo en local y que este documento; el costo son unos 3 minutos por build, y si la imagen vuelve a traer 3.13.16 no compila |
+| Provocar el fallo con un pull request cerrado sin fusionar | Un commit con la prueba rota en `dev` o en `main`, o un build lanzado a mano | La prueba rota no toca las ramas protegidas y se obtiene una ejecución del pipeline, que es lo que pide el punto 2 del documento (sección 7.1) |
+| Encender el entorno de Beanstalk solo para trabajar y grabar | Dejarlo encendido durante toda la entrega | Sigue la aclaración del tutor sobre los recursos de AWS y el plan gratuito; el pipeline no depende del entorno (sección 3) |
+
+### 8.2 Limitaciones
+
+1. **El despliegue es manual.** La entrega excluye el despliegue continuo, así que el pipeline termina en el
+   bucket. Para desplegar, una persona descarga el objeto con nombre generado, extrae `app-<commit>.zip` y lo
+   sube a Beanstalk. Es el paso más propenso a errores, porque hay que identificar qué objeto corresponde a
+   qué build. Se mitiga con la etiqueta del commit dentro del paquete: después del despliegue, `/ping`
+   confirma qué versión quedó en el entorno.
+2. **Las pruebas unitarias no usan PostgreSQL.** Con SQLite en memoria el build es rápido y no necesita
+   secretos, pero no detecta diferencias entre los dos motores, como tipos de datos o restricciones. La
+   integración con PostgreSQL se comprueba fuera del pipeline, con la colección de Postman contra el entorno
+   (22 de 22, sección 6.3).
+3. **La colección de Postman no corre en el pipeline.** Las pruebas del API contra el entorno se ejecutan a
+   mano: como el pipeline no despliega, no tiene un entorno con la versión recién construida al que apuntar.
+4. **El build solo prueba y empaqueta.** No exige un mínimo de cobertura (`pytest` corre con `--cov=app` y
+   sin `--cov-fail-under`) ni ejecuta análisis estático o revisión de vulnerabilidades de las dependencias.
+   Hoy la cobertura es del 100 %, pero si bajara, el build no fallaría.
+5. **El disparador de pull request no está explicado del todo.** El #156 hacia `main` no inició ninguna
+   ejecución y no se identificó la causa, y el evento `UPDATED` no se verificó (sección 5.3). Además, `**/*.md`
+   no excluye el README de la raíz. El punto 4 de la configuración no depende de este disparador.
+6. **El bucket acumula objetos.** No tiene versionado ni reglas de ciclo de vida: cada ejecución deja el
+   código de origen (`SourceArti/`) y, si el build pasa, el paquete (`BuildArtif/`). Con el volumen de esta
+   entrega el espacio es despreciable; con un uso continuo haría falta una regla de expiración.
+7. **El entorno puede no responder durante la calificación.** Se apaga después de grabar. El pipeline, el
+   bucket y los registros del build siguen disponibles.
+8. **La imagen administrada cambia sin aviso.** `standard:6.0` fija la versión menor de Python, no el parche,
+   y AWS la actualiza sin cambiar el nombre. El 29 de octubre dejó de traer 3.13.16 y tres builds fallaron
+   sin ningún cambio de código (sección 5.1). Compilar una versión fija protege el build, a costa de unos 3 minutos
+   por build; las alternativas son una imagen propia o una caché del intérprete.
 
 ## 9. Conclusiones
 
-[PENDIENTE: tarea 3.6 (#122).]
+1. **La integración continua cumple lo que pide la entrega.** Cada commit en `main` inicia el pipeline sin
+   intervención manual; CodeBuild ejecuta las 97 pruebas y, si pasan, deja `app-<commit>.zip` en S3. Una
+   ejecución completa tardaba entre 38 segundos y poco más de un minuto; desde que el build compila Python
+   3.13.16 (sección 5.1), poco más de 4 minutos.
+2. **Lo que se despliega es lo que se probó.** El paquete solo se genera después de que pasan las pruebas,
+   en el mismo build y con el mismo código. La ejecución fallida lo confirmó: con una prueba rota no hubo
+   paquete ni cambios en las ramas.
+3. **La trazabilidad sale de nombrar bien el artefacto.** Poner el commit en el nombre del paquete y en
+   `VERSION` permite seguir una versión desde `/ping` hasta el build, la ejecución y el pull request que la
+   originó, sin registros adicionales.
+4. **Los disparadores se comprueban contra el requisito, no solo se configuran.** Excluir rutas parecía una
+   optimización razonable, pero dejaba commits de la rama principal sin build; se detectó al revisar el
+   enunciado y se corrigió con la versión 2. El caso del #156 mostró además que un disparador configurado no
+   garantiza una ejecución: la evidencia tiene que ser una ejecución real.
+5. **La seguridad no exigió más complejidad.** La conexión con GitHub sin tokens, los roles con permisos
+   mínimos y un build sin secretos ni variables de entorno dejan al pipeline sin credenciales que proteger.
+   Las pruebas sin base de datos ayudaron: el build no necesita conocer la cadena de conexión.
+6. **El siguiente paso es el despliegue continuo.** El paso manual a Beanstalk es la parte más lenta y
+   propensa a errores del ciclo. Con el artefacto ya etiquetado, una etapa de despliegue, pruebas de
+   integración con PostgreSQL y un umbral de cobertura resolverían las limitaciones de la sección 8.
