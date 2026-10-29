@@ -171,7 +171,8 @@ iniciaba el build, y el enunciado pide que lo haga cada commit.
 | URL del entorno | http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación | [PENDIENTE: tarea 4.5 (#130).] |
+| Video de sustentación (SharePoint de la Universidad) | https://uniandes.sharepoint.com/:v:/s/ProyectoDevOps-MISO/IQBlZXxBdOq4TqZwj9LTdjXpAdfD5Y5HXVS_hBVJWQKQbOA?e=urS1d2 |
+| Video de sustentación (YouTube) | https://youtu.be/FreR5w8jJE4 |
 
 Notas aclaratorias:
 
@@ -186,6 +187,10 @@ Notas aclaratorias:
   404 porque el API no define esa ruta; `/ping` responde con la versión desplegada.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
+- **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
+  Teams/SharePoint de la Universidad, con acceso para las personas de la Universidad de los Andes
+  (solo vista). El segundo está en YouTube, como copia de respaldo para quien no pueda abrir el de
+  la Universidad.
 
 ## 4. Configuración en AWS
 
