@@ -30,7 +30,7 @@ app/                  # el microservicio, por capas
   domain/             #   entidad, validación del email, errores y reloj
   application/        #   casos de uso (agregar y consultar) y puerto del repositorio
   infrastructure/     #   http (rutas, recursos, esquema y autenticación) y persistence (SQLAlchemy)
-scripts/              # generar_token.py, empaquetar.py y monitor_disponibilidad.py
+scripts/              # generar_token.py, empaquetar.py, monitor_disponibilidad.py y ambiente_aws.py
 tests/                # pytest
 postman/              # colección y environments (JSON v2.1)
 docs/                 # enunciados, rúbricas y aclaraciones del curso, documentos de cada entrega y:
@@ -132,7 +132,7 @@ python -m pytest -q
 python -m pytest -q --cov=app
 ```
 
-El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es `97 passed` y una cobertura del 100 % sobre `app/`. Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
+El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es `127 passed` y una cobertura del 100 % sobre `app/`. Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
 
 | Archivo | Pruebas | Qué cubre |
 |---|---|---|
@@ -142,6 +142,7 @@ El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es
 | `tests/test_configuration.py` | 16 | Configuración por ambiente |
 | `tests/test_empaquetar.py` | 15 | Script de empaquetado |
 | `tests/test_monitor_disponibilidad.py` | 25 | Script de monitoreo del despliegue |
+| `tests/test_ambiente_aws.py` | 30 | Script para apagar y volver a levantar el ambiente |
 | `tests/test_app_creation.py` | 1 | Creación de la aplicación |
 | `tests/test_domain.py` | 1 | Entidad de dominio |
 
@@ -213,6 +214,16 @@ Durante las estrategias de despliegue, consulta `/ping` cada segundo y guarda ca
 python scripts/monitor_disponibilidad.py http://blacklist-devops-misw.us-east-2.elasticbeanstalk.com docs/despliegues/<estrategia>.csv
 ```
 Se inicia antes de desplegar y se detiene con Ctrl+C cuando el entorno vuelve a *Ok*. Al detenerse imprime el resumen: solicitudes, respuestas no-200 y disponibilidad, la mayor caída (desde la primera respuesta no-200 hasta la siguiente respuesta 200; un corte de conexión cuenta como no-200), las versiones observadas con su primera y última respuesta, y la ventana en la que respondieron dos versiones. Las horas están en UTC; la consola de AWS muestra UTC-5. Opciones: `--intervalo` (segundos entre solicitudes), `--tiempo-espera` y `--solicitudes` (se detiene solo después de N solicitudes).
+
+## Apagar y volver a levantar el ambiente
+El entorno y la RDS solo se encienden para trabajar, grabar o sustentar. `scripts/ambiente_aws.py` los apaga y los vuelve a levantar con la CLI de AWS (perfil `blacklist`, región `us-east-2`). Sin `--aplicar` solo muestra el estado y los pasos:
+```bash
+python scripts/ambiente_aws.py estado
+python scripts/ambiente_aws.py apagar [--aplicar]         # plantilla blacklist-entrega-2, snapshot de respaldo, termina el entorno y detiene la RDS
+python scripts/ambiente_aws.py eliminar-rds [--aplicar]   # elimina la RDS con snapshot final
+python scripts/ambiente_aws.py levantar [--aplicar]       # inicia o restaura la RDS y crea el entorno con la misma URL
+```
+Procedimiento y consideraciones en `docs/despliegues/1.7-infraestructura-reproducible.md` (sección 7.5).
 
 ## Flujo de trabajo en Git
 Hay dos ramas protegidas: `main` (estable) y `dev` (integración). Nadie hace commit directo a ninguna.
