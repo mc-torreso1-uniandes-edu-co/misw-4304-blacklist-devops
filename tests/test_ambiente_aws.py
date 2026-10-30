@@ -8,7 +8,8 @@ from scripts import ambiente_aws as ambiente
 ENTORNO_ID = "e-prueba"
 GRUPO_ID = "sg-prueba"
 ENTORNO_LISTO = {"Status": "Ready", "EnvironmentId": ENTORNO_ID, "Health": "Green", "VersionLabel": "b0e9d03"}
-ENTORNO_TERMINADO = {"Status": "Terminated", "EnvironmentId": "e-anterior"}
+ENTORNO_TERMINADO = {"Status": "Terminated", "EnvironmentId": "e-anterior", "DateUpdated": "2026-10-30T00:42:18Z"}
+ENTORNO_TERMINADO_ANTIGUO = {"Status": "Terminated", "EnvironmentId": "e-antiguo", "DateUpdated": "2026-10-17T23:15:00Z"}
 COMANDOS_DE_LECTURA = ("describe-", "check-dns-availability")
 
 
@@ -40,7 +41,7 @@ class AwsFalso:
             return {"Available": self.url}
         if accion == "terminate-environment":
             self.entornos = [ENTORNO_TERMINADO]
-        if accion == "create-environment":
+        if accion in ("create-environment", "rebuild-environment"):
             self.entornos = [ENTORNO_LISTO]
         return {}
 
@@ -58,7 +59,7 @@ def acciones(plan):
 
 def test_consulta_el_estado_completo():
     aws = AwsFalso(
-        entornos=[ENTORNO_TERMINADO, ENTORNO_LISTO],
+        entornos=[ENTORNO_TERMINADO_ANTIGUO, ENTORNO_TERMINADO, ENTORNO_LISTO],
         plantillas=[ambiente.PLANTILLA],
         snapshots=[ambiente.SNAPSHOT_RESPALDO],
     )
@@ -68,6 +69,7 @@ def test_consulta_el_estado_completo():
     assert leido == ambiente.Estado(
         entorno="Ready",
         entorno_id=ENTORNO_ID,
+        terminado_id="e-anterior",
         salud="Green",
         version="b0e9d03",
         base_datos="available",
@@ -344,3 +346,40 @@ def test_salida_vacia_y_error_de_la_cli(monkeypatch):
     assert ambiente.llamar_aws(["rds", "stop-db-instance"]) == {}
     with pytest.raises(ambiente.ErrorAws, match="DBInstanceNotFound"):
         ambiente.llamar_aws(["rds", "describe-db-instances"])
+
+
+def test_consulta_los_entornos_terminados_de_las_ultimas_seis_semanas():
+    aws = AwsFalso()
+    ahora = ambiente.datetime(2026, 10, 30, 12, 0, tzinfo=ambiente.timezone.utc)
+
+    ambiente.consultar_entornos(aws, ahora=lambda: ahora)
+
+    consulta = aws.llamadas[0]
+    assert "--include-deleted" in consulta
+    assert consulta[consulta.index("--included-deleted-back-to") + 1] == "2026-09-18T12:00:00Z"
+
+
+def test_levantar_sin_plantilla_restaura_el_entorno_terminado():
+    actual = estado(base_datos="available", terminado_id="e-anterior", url_disponible=True)
+
+    plan = ambiente.planear_levantamiento(actual, AwsFalso(), "b0e9d03", ambiente.SNAPSHOT_FINAL)
+
+    assert acciones(plan) == ["rebuild-environment", "esperar"]
+    assert plan.pasos[0].comando[-1] == "e-anterior"
+
+
+def test_levantar_prefiere_la_plantilla_a_la_restauracion():
+    actual = estado(base_datos="available", plantilla=True, terminado_id="e-anterior", url_disponible=True)
+
+    plan = ambiente.planear_levantamiento(actual, AwsFalso(), "b0e9d03", ambiente.SNAPSHOT_FINAL)
+
+    assert acciones(plan) == ["create-environment", "esperar"]
+
+
+def test_levantar_aplicado_restaura_el_entorno_terminado():
+    aws = AwsFalso(entornos=[ENTORNO_TERMINADO], base_datos="stopped", url=True)
+
+    codigo = ambiente.main(["levantar", "--aplicar"], aws=aws, ping=lambda: "{}", mostrar=lambda linea: None)
+
+    assert codigo == ambiente.CODIGO_EXITO
+    assert aws.acciones() == ["start-db-instance", "wait", "rebuild-environment"]

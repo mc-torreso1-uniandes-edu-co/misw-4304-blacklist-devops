@@ -132,7 +132,7 @@ python -m pytest -q
 python -m pytest -q --cov=app
 ```
 
-El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es `127 passed` y una cobertura del 100 % sobre `app/`. Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
+El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es `131 passed` y una cobertura del 100 % sobre `app/`. Para correr la misma suite contra PostgreSQL, define `DATABASE_URL` antes de ejecutarla.
 
 | Archivo | Pruebas | Qué cubre |
 |---|---|---|
@@ -142,7 +142,7 @@ El segundo comando es el mismo que ejecuta el pipeline. El resultado esperado es
 | `tests/test_configuration.py` | 16 | Configuración por ambiente |
 | `tests/test_empaquetar.py` | 15 | Script de empaquetado |
 | `tests/test_monitor_disponibilidad.py` | 25 | Script de monitoreo del despliegue |
-| `tests/test_ambiente_aws.py` | 30 | Script para apagar y volver a levantar el ambiente |
+| `tests/test_ambiente_aws.py` | 34 | Script para apagar y volver a levantar el ambiente |
 | `tests/test_app_creation.py` | 1 | Creación de la aplicación |
 | `tests/test_domain.py` | 1 | Entidad de dominio |
 
@@ -221,7 +221,7 @@ El entorno y la RDS solo se encienden para trabajar, grabar o sustentar. `script
 python scripts/ambiente_aws.py estado
 python scripts/ambiente_aws.py apagar [--aplicar]         # plantilla blacklist-entrega-2, snapshot de respaldo, termina el entorno y detiene la RDS
 python scripts/ambiente_aws.py eliminar-rds [--aplicar]   # elimina la RDS con snapshot final
-python scripts/ambiente_aws.py levantar [--aplicar]       # inicia o restaura la RDS y crea el entorno con la misma URL
+python scripts/ambiente_aws.py levantar [--aplicar]       # inicia o restaura la RDS y crea o restaura el entorno con la misma URL
 ```
 Procedimiento y consideraciones en `docs/despliegues/1.7-infraestructura-reproducible.md` (sección 7.5).
 

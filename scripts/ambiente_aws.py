@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
 REGION = "us-east-2"
@@ -32,6 +33,7 @@ RDS_DETENIDA = "stopped"
 SEVERIDAD_ERROR = "error"
 CODIGO_HTTP_EXITO = 200
 
+DIAS_RESTAURACION = 42
 PAUSA_SONDEO = 20
 INTENTOS_SONDEO = 90
 INTENTOS_PING = 6
@@ -51,7 +53,9 @@ CODIGO_ERROR = 1
 DESCRIPCION = "Apaga y vuelve a levantar el entorno de Beanstalk y la RDS. Sin --aplicar solo muestra los pasos."
 DESCRIPCION_ESTADO = "Muestra el estado del entorno, la RDS, la plantilla y los snapshots."
 DESCRIPCION_APAGAR = "Guarda la plantilla, crea un snapshot de respaldo, termina el entorno y detiene la RDS."
-DESCRIPCION_LEVANTAR = "Inicia o restaura la RDS y crea el entorno desde la plantilla."
+DESCRIPCION_LEVANTAR = (
+    "Inicia o restaura la RDS y crea el entorno desde la plantilla; sin plantilla, restaura el último entorno terminado."
+)
 DESCRIPCION_ELIMINAR_RDS = "Elimina la RDS con snapshot final (después de la fecha oficial de la entrega)."
 DESCRIPCION_APLICAR = "Ejecuta los pasos en AWS; sin la opción es una prueba en seco."
 DESCRIPCION_VERSION = f"Versión de la aplicación que se despliega (por defecto {VERSION_POR_DEFECTO})."
@@ -62,7 +66,10 @@ MENSAJE_SIN_PASOS = "No hay nada que hacer."
 MENSAJE_PASO = "{numero}. {descripcion}"
 MENSAJE_COMANDO = "   aws {comando}"
 MENSAJE_ERROR = "ERROR: {mensaje}"
-MENSAJE_SIN_PLANTILLA = f"No existe la plantilla {PLANTILLA}: se crea con 'apagar' mientras el entorno está activo."
+MENSAJE_SIN_ORIGEN = (
+    f"No existe la plantilla {PLANTILLA} ni un entorno terminado que se pueda restaurar "
+    f"(Beanstalk los conserva {DIAS_RESTAURACION} días): crear el entorno con el asistente (sección 7.1)."
+)
 MENSAJE_URL_OCUPADA = f"El prefijo de URL {PREFIJO_URL} no está disponible."
 MENSAJE_SIN_SNAPSHOT = "No existe la RDS ni el snapshot {snapshot} para restaurarla."
 MENSAJE_SIN_GRUPO = f"No existe el grupo de seguridad {GRUPO_BASE_DATOS} para restaurar la RDS."
@@ -87,6 +94,7 @@ ConsultaAws = Callable[[List[str]], Dict]
 class Estado:
     entorno: str = ""
     entorno_id: str = ""
+    terminado_id: str = ""
     salud: str = ""
     version: str = ""
     base_datos: str = ""
@@ -128,16 +136,28 @@ def llamar_aws(argumentos: List[str]) -> Dict:
     return json.loads(resultado.stdout) if resultado.stdout.strip() else {}
 
 
-def consultar_entorno(aws: ConsultaAws) -> Dict:
-    entornos = aws(
-        ["elasticbeanstalk", "describe-environments", "--application-name", APLICACION, "--environment-names", ENTORNO]
+def consultar_entornos(aws: ConsultaAws, ahora: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> List[Dict]:
+    desde = (ahora() - timedelta(days=DIAS_RESTAURACION)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return aws(
+        ["elasticbeanstalk", "describe-environments", "--application-name", APLICACION, "--environment-names", ENTORNO,
+         "--include-deleted", "--included-deleted-back-to", desde]
     ).get("Environments", [])
-    activos = [entorno for entorno in entornos if entorno.get("Status") != ENTORNO_TERMINADO]
+
+
+def consultar_entorno(aws: ConsultaAws) -> Dict:
+    activos = [entorno for entorno in consultar_entornos(aws) if entorno.get("Status") != ENTORNO_TERMINADO]
     return activos[0] if activos else {}
 
 
 def consultar_estado(aws: ConsultaAws) -> Estado:
-    entorno = consultar_entorno(aws)
+    entornos = consultar_entornos(aws)
+    activos = [entorno for entorno in entornos if entorno.get("Status") != ENTORNO_TERMINADO]
+    terminados = sorted(
+        (entorno for entorno in entornos if entorno.get("Status") == ENTORNO_TERMINADO),
+        key=lambda entorno: entorno.get("DateUpdated", ""),
+        reverse=True,
+    )
+    entorno = activos[0] if activos else {}
     try:
         instancias = aws(["rds", "describe-db-instances", "--db-instance-identifier", BASE_DATOS])["DBInstances"]
         base_datos = instancias[0]["DBInstanceStatus"]
@@ -153,6 +173,7 @@ def consultar_estado(aws: ConsultaAws) -> Estado:
     return Estado(
         entorno=entorno.get("Status", ""),
         entorno_id=entorno.get("EnvironmentId", ""),
+        terminado_id=terminados[0]["EnvironmentId"] if terminados else "",
         salud=entorno.get("Health", ""),
         version=entorno.get("VersionLabel", ""),
         base_datos=base_datos,
@@ -170,6 +191,7 @@ def formatear_estado(estado: Estado) -> str:
             f"Entorno {ENTORNO}: {entorno}",
             f"RDS {BASE_DATOS}: {estado.base_datos or 'no existe'}",
             f"Plantilla {PLANTILLA}: {'existe' if estado.plantilla else 'no existe'}",
+            f"Entorno terminado que se puede restaurar: {estado.terminado_id or 'ninguno'}",
             f"Snapshots manuales: {', '.join(estado.snapshots) or 'ninguno'}",
             f"Prefijo de URL {PREFIJO_URL}: {'libre' if estado.url_disponible else 'en uso'}",
         ]
@@ -285,20 +307,29 @@ def planear_levantamiento(estado: Estado, aws: ConsultaAws, version: str, snapsh
                 ["rds", "wait", "db-instance-available", "--db-instance-identifier", BASE_DATOS],
             )
         )
-    if not estado.entorno_activo:
-        if not estado.plantilla:
-            raise ErrorAws(MENSAJE_SIN_PLANTILLA)
-        if not estado.url_disponible:
-            raise ErrorAws(MENSAJE_URL_OCUPADA)
-        plan.pasos += [
+    if estado.entorno_activo:
+        return plan
+    if not estado.plantilla and not estado.terminado_id:
+        raise ErrorAws(MENSAJE_SIN_ORIGEN)
+    if not estado.url_disponible:
+        raise ErrorAws(MENSAJE_URL_OCUPADA)
+    if estado.plantilla:
+        plan.pasos.append(
             Paso(
                 f"Crear el entorno {ENTORNO} desde {PLANTILLA} con la versión {version}",
                 ["elasticbeanstalk", "create-environment", "--application-name", APLICACION,
                  "--environment-name", ENTORNO, "--cname-prefix", PREFIJO_URL, "--template-name", PLANTILLA,
                  "--version-label", version],
-            ),
-            Paso("Esperar a que el entorno esté listo", esperar=lambda: esperar_entorno(aws, ENTORNO_LISTO)),
-        ]
+            )
+        )
+    else:
+        plan.pasos.append(
+            Paso(
+                f"Restaurar el entorno terminado {estado.terminado_id}, con su configuración y su última versión",
+                ["elasticbeanstalk", "rebuild-environment", "--environment-id", estado.terminado_id],
+            )
+        )
+    plan.pasos.append(Paso("Esperar a que el entorno esté listo", esperar=lambda: esperar_entorno(aws, ENTORNO_LISTO)))
     return plan
 
 
