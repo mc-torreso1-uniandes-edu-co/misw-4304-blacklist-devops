@@ -1,13 +1,15 @@
 name: documento-pdf
 
 # Genera "Proyecto 1 entrega <N> – Documento.pdf" en docs/pdf/ con scripts/generar_pdf.py.
-# - A demanda (Run workflow): se elige la entrega y la rama.
+# - A demanda (Run workflow): se elige la entrega y la rama. Es la única vía que hace commit del PDF:
+#   desde dev o main lo sube a la rama pdf/entrega-<N> con un PR hacia dev (dev y main están
+#   protegidas y dev es la única vía hacia main), generado desde dev; desde otra rama, el commit va a
+#   la misma rama.
 # - Con cada push a dev o main que cambie un .md de docs/ (o el generador): solo la entrega en curso,
-#   calculada con la fecha de hoy y las fechas oficiales del generador.
+#   calculada con la fecha de hoy y las fechas oficiales del generador, y solo como artefacto de la
+#   ejecución, sin commit ni PR.
 # Si no hay entrega en curso, la entrega no tiene documento o el PDF ya está al día con sus fuentes,
 # no genera nada.
-# dev y main están protegidas: el PDF se sube a la rama pdf/entrega-<N> con un PR hacia dev (la única
-# vía hacia main), generado desde dev. En cualquier otra rama, el commit va a la misma rama.
 
 on:
   workflow_dispatch:
@@ -37,13 +39,13 @@ jobs:
       pull-requests: write   # PR hacia dev
       actions: write         # chequeo no-desde-main sobre el commit nuevo
     concurrency:
-      group: documento-pdf-${{ contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref_name }}
+      group: documento-pdf-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref_name }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref }}
 
       - uses: actions/setup-python@v6
         with:
@@ -53,6 +55,7 @@ jobs:
         id: destino
         env:
           ENTREGA_ELEGIDA: ${{ inputs.entrega }}
+          EVENTO: ${{ github.event_name }}
           REF: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
         run: |
@@ -67,7 +70,10 @@ jobs:
             echo "PDF=docs/pdf/Proyecto 1 entrega $entrega – Documento.pdf"
           } >> "$GITHUB_ENV"
           echo "entrega=$entrega" >> "$GITHUB_OUTPUT"
-          if [ "$REF" = dev ] || [ "$REF" = main ]; then
+          if [ "$EVENTO" != workflow_dispatch ]; then
+            # push: solo artefacto; el commit y el PR se hacen a demanda
+            { echo "rama="; echo "pr=false"; } >> "$GITHUB_OUTPUT"
+          elif [ "$REF" = dev ] || [ "$REF" = main ]; then
             { echo "rama=pdf/entrega-$entrega"; echo "pr=true"; } >> "$GITHUB_OUTPUT"
           elif [ "$REF_TYPE" = branch ]; then
             { echo "rama=$REF"; echo "pr=false"; } >> "$GITHUB_OUTPUT"
@@ -180,6 +186,9 @@ jobs:
             echo "### Entrega $ENTREGA"
             if [ "$GENERADO" = true ]; then
               echo "PDF generado: \`$PDF\`${RAMA:+, subido a la rama \`$RAMA\`}. También queda como artefacto \`pdf-entrega-$ENTREGA\`."
+              if [ -z "$RAMA" ]; then
+                echo "Sin commit: para subirlo al repositorio, ejecutar el flujo a demanda (Run workflow)."
+              fi
             elif [ "$EXISTE" = true ]; then
               echo "El PDF ya estaba al día con sus fuentes: no se generó de nuevo. El vigente queda como artefacto \`pdf-entrega-$ENTREGA\`."
             else
