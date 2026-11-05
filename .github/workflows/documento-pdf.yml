@@ -55,7 +55,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version-file: .python-version   # 3.13.16, la versión del equipo
 
       - name: Definir la entrega y el destino
         id: destino
