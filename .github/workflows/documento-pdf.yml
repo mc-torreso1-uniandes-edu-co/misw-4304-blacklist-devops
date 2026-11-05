@@ -1,0 +1,203 @@
+name: documento-pdf
+
+# Genera "Proyecto 1 entrega <N> – Documento.pdf" en docs/pdf/ con scripts/generar_pdf.py.
+# - A demanda (Run workflow): se elige la entrega y la rama. Es la única vía que hace commit del PDF:
+#   desde dev o main lo sube a la rama pdf/entrega-<N> con un PR hacia dev (dev y main están
+#   protegidas y dev es la única vía hacia main), generado desde dev; desde otra rama, el commit va a
+#   la misma rama.
+# - Con cada push a dev o main que cambie un .md de docs/ (o el generador): solo la entrega en curso,
+#   calculada con la fecha de hoy y las fechas oficiales del generador, y solo como artefacto de la
+#   ejecución, sin commit ni PR.
+# Si no hay entrega en curso, la entrega no tiene documento o el PDF ya está al día con sus fuentes,
+# no genera nada.
+# Corre en Windows para usar las mismas fuentes que el PDF generado en local (Segoe UI, Consolas); los
+# pasos usan Git Bash.
+
+on:
+  workflow_dispatch:
+    inputs:
+      entrega:
+        description: Entrega cuyo documento se convierte a PDF
+        type: choice
+        options: ["1", "2", "3", "4"]
+        required: true
+      forzar:
+        description: Generar aunque el PDF ya esté al día con sus fuentes
+        type: boolean
+        default: false
+  push:
+    branches: [dev, main]
+    paths:
+      - "docs/**.md"
+      - "scripts/generar_pdf.py"
+
+permissions: {}
+
+jobs:
+  pdf:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: write        # commit del PDF
+      pull-requests: write   # PR hacia dev
+      actions: write         # chequeo no-desde-main sobre el commit nuevo
+    concurrency:
+      group: documento-pdf-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref_name }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"   # salida en UTF-8 (rutas con "–" y tildes)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Definir la entrega y el destino
+        id: destino
+        env:
+          ENTREGA_ELEGIDA: ${{ inputs.entrega }}
+          EVENTO: ${{ github.event_name }}
+          REF: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          entrega="${ENTREGA_ELEGIDA:-$(python scripts/generar_pdf.py --en-curso)}"
+          if [ -z "$entrega" ]; then
+            echo "Ya pasaron las fechas de todas las entregas: no se genera nada."
+            exit 0
+          fi
+          echo "Entrega: $entrega"
+          {
+            echo "ENTREGA=$entrega"
+            echo "PDF=docs/pdf/Proyecto 1 entrega $entrega – Documento.pdf"
+          } >> "$GITHUB_ENV"
+          echo "entrega=$entrega" >> "$GITHUB_OUTPUT"
+          if [ "$EVENTO" != workflow_dispatch ]; then
+            # push: solo artefacto; el commit y el PR se hacen a demanda
+            { echo "rama="; echo "pr=false"; } >> "$GITHUB_OUTPUT"
+          elif [ "$REF" = dev ] || [ "$REF" = main ]; then
+            { echo "rama=pdf/entrega-$entrega"; echo "pr=true"; } >> "$GITHUB_OUTPUT"
+          elif [ "$REF_TYPE" = branch ]; then
+            { echo "rama=$REF"; echo "pr=false"; } >> "$GITHUB_OUTPUT"
+          else
+            # etiqueta: solo se publica el PDF como artefacto de la ejecución
+            { echo "rama="; echo "pr=false"; } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Traer el PDF pendiente de la rama pdf/entrega-<N>
+        if: steps.destino.outputs.pr == 'true'
+        env:
+          RAMA: ${{ steps.destino.outputs.rama }}
+        run: |
+          if git fetch --depth=1 origin "refs/heads/$RAMA:refs/remotes/origin/$RAMA" 2>/dev/null \
+             && git cat-file -e "origin/$RAMA:$PDF" 2>/dev/null; then
+            mkdir -p docs/pdf
+            git show "origin/$RAMA:$PDF" > "$PDF"
+            echo "Se compara contra el PDF del PR pendiente ($RAMA)."
+          fi
+
+      - name: Instalar pymupdf
+        if: steps.destino.outputs.entrega != ''
+        run: pip install pymupdf==1.28.2
+
+      - name: Generar el PDF
+        id: generar
+        if: steps.destino.outputs.entrega != ''
+        env:
+          FORZAR: ${{ inputs.forzar || false }}
+        run: |
+          antes=$(sha256sum "$PDF" 2>/dev/null || true)
+          opciones=(--entrega "$ENTREGA")
+          [ "$FORZAR" = true ] || opciones+=(--si-cambia)
+          set +e
+          python scripts/generar_pdf.py "${opciones[@]}"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 2 ]; then
+            echo "::warning::El PDF de la entrega $ENTREGA se generó con puntos por revisar (ver REVISAR en el registro)."
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+          despues=$(sha256sum "$PDF" 2>/dev/null || true)
+          if [ -f "$PDF" ]; then echo "existe=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$despues" ] && [ "$antes" != "$despues" ]; then echo "generado=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Publicar el PDF como artefacto de la ejecución
+        if: steps.generar.outputs.existe == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-entrega-${{ steps.destino.outputs.entrega }}
+          path: ${{ env.PDF }}
+          if-no-files-found: ignore
+
+      - name: Subir el commit del PDF
+        if: steps.generar.outputs.generado == 'true' && steps.destino.outputs.rama != ''
+        env:
+          RAMA: ${{ steps.destino.outputs.rama }}
+          PR: ${{ steps.destino.outputs.pr }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "$PDF"
+          git commit -m "Genera el PDF del documento de la entrega $ENTREGA"
+          if [ "$PR" = true ]; then
+            # la rama pdf/entrega-<N> se rehace sobre dev en cada ejecución
+            git push --force origin "HEAD:refs/heads/$RAMA"
+          else
+            git push origin "HEAD:refs/heads/$RAMA"
+          fi
+          # los commits hechos con el token del flujo no disparan pull_request: el chequeo requerido
+          # no-desde-main se lanza aparte sobre la rama para que el PR pueda fusionarse
+          gh workflow run solo-desde-dev.yml --ref "$RAMA" \
+            || echo "::warning::No se pudo lanzar el chequeo no-desde-main sobre $RAMA."
+
+      - name: Abrir el PR hacia dev
+        if: steps.generar.outputs.generado == 'true' && steps.destino.outputs.pr == 'true'
+        env:
+          RAMA: ${{ steps.destino.outputs.rama }}
+          ACTOR: ${{ github.actor }}
+          EJECUCION: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMPARAR: ${{ github.server_url }}/${{ github.repository }}/compare/dev...${{ steps.destino.outputs.rama }}?expand=1
+        run: |
+          abierto=$(gh pr list --head "$RAMA" --base dev --state open --json url -q '.[0].url')
+          if [ -n "$abierto" ]; then
+            echo "El PR ya estaba abierto y quedó actualizado: $abierto"
+            exit 0
+          fi
+          cuerpo="Actualiza \`$PDF\` a partir del documento de la entrega $ENTREGA en \`docs/\`.
+
+          Generado por la ejecución $EJECUCION. Antes de aprobar, revisar el PDF (portada, una tabla y una página con capturas)."
+          if ! gh pr create --base dev --head "$RAMA" \
+              --title "Actualiza el PDF del documento de la entrega $ENTREGA" --body "$cuerpo" \
+              --label documentación --milestone "Entrega $ENTREGA" --assignee "$ACTOR"; then
+            echo "::notice::No se pudo abrir el PR automáticamente. Abrirlo con base dev: $COMPARAR"
+          fi
+
+      - name: Resumen
+        if: always()
+        env:
+          RAMA: ${{ steps.destino.outputs.rama }}
+          EXISTE: ${{ steps.generar.outputs.existe }}
+          GENERADO: ${{ steps.generar.outputs.generado }}
+        run: |
+          {
+            if [ -z "${ENTREGA:-}" ]; then
+              echo "No hay entrega en curso: no se generó nada."
+              exit 0
+            fi
+            echo "### Entrega $ENTREGA"
+            if [ "$GENERADO" = true ]; then
+              echo "PDF generado: \`$PDF\`${RAMA:+, subido a la rama \`$RAMA\`}. También queda como artefacto \`pdf-entrega-$ENTREGA\`."
+              if [ -z "$RAMA" ]; then
+                echo "Sin commit: para subirlo al repositorio, ejecutar el flujo a demanda (Run workflow)."
+              fi
+            elif [ "$EXISTE" = true ]; then
+              echo "El PDF ya estaba al día con sus fuentes: no se generó de nuevo. El vigente queda como artefacto \`pdf-entrega-$ENTREGA\`."
+            else
+              echo "No hay documento de la entrega $ENTREGA con contenido: no se generó nada."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
