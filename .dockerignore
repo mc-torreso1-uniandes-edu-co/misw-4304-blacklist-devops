@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+venv
+tests
+docs
+postman
+scripts
+.ebextensions
+.env
+*.db
+dist
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
