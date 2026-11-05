@@ -10,6 +10,8 @@ name: documento-pdf
 #   ejecución, sin commit ni PR.
 # Si no hay entrega en curso, la entrega no tiene documento o el PDF ya está al día con sus fuentes,
 # no genera nada.
+# Corre en Windows para usar las mismas fuentes que el PDF generado en local (Segoe UI, Consolas); los
+# pasos usan Git Bash.
 
 on:
   workflow_dispatch:
@@ -33,7 +35,10 @@ permissions: {}
 
 jobs:
   pdf:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write        # commit del PDF
       pull-requests: write   # PR hacia dev
@@ -42,6 +47,7 @@ jobs:
       group: documento-pdf-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["dev", "main"]'), github.ref_name) && 'dev' || github.ref_name }}
     env:
       GH_TOKEN: ${{ github.token }}
+      PYTHONUTF8: "1"   # salida en UTF-8 (rutas con "–" y tildes)
     steps:
       - uses: actions/checkout@v5
         with:
