@@ -4,6 +4,7 @@ env:
   shell: bash
   variables:
     APP_ENV: "testing"
+    ECR_REPOSITORY: "blacklist-devops"
 
 phases:
   install:
@@ -13,15 +14,27 @@ phases:
       - MAKE_OPTS="-j$(nproc)" pyenv install --skip-existing "$(cat .python-version)"
       - python --version
       - pip install -r requirements-dev.txt
+  pre_build:
+    commands:
+      - ': "${AWS_ACCOUNT_ID:?La variable AWS_ACCOUNT_ID no esta definida}"'
+      - ': "${AWS_DEFAULT_REGION:?La variable AWS_DEFAULT_REGION no esta definida}"'
+      - REGISTRO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRO"
   build:
     commands:
       - python -m pytest -q --cov=app
       - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
       - ETIQUETA="${COMMIT_ID:0:7}"
-      - python scripts/empaquetar.py "$ETIQUETA" --omitir-pruebas
-      - python -m zipfile -l "dist/app-${ETIQUETA}.zip"
+      - IMAGEN="${REGISTRO}/${ECR_REPOSITORY}"
+      - docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg VERSION="$ETIQUETA" -t "${IMAGEN}:${ETIQUETA}" -t "${IMAGEN}:latest" .
+  post_build:
+    commands:
+      - docker push "${IMAGEN}:${ETIQUETA}"
+      - docker push "${IMAGEN}:latest"
+      - printf '{"ImageURI":"%s"}\n' "${IMAGEN}:${ETIQUETA}" > imageDetail.json
+      - cat imageDetail.json
 
 artifacts:
   files:
-    - dist/app-*.zip
+    - imageDetail.json
   discard-paths: yes
