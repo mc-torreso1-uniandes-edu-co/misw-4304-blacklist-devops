@@ -8,3 +8,4 @@ instance/
 *.db
 .coverage
 dist/
+imageDetail.json
