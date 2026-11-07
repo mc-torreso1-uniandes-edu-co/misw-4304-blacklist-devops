@@ -28,6 +28,7 @@ phases:
   post_build:
     commands:
       - |
+        set -e
         if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
           docker push "${IMAGEN}:${ETIQUETA}"
           docker push "${IMAGEN}:latest"
