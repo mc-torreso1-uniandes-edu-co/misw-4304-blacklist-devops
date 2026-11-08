@@ -62,7 +62,7 @@ usuario sin privilegios (`appuser`, UID 10001) y recibe la etiqueta de la versi�
 | Registro de imágenes | No había: el artefacto era el `.zip` | Amazon ECR privado `blacklist-devops` (etiquetas `<commit>` y `latest`) |
 | Cómputo | AWS Elastic Beanstalk | AWS ECS con Fargate |
 | Despliegue | Manual: una persona sube la versión al entorno | Automático con CodeDeploy, azul/verde con reversión |
-| Artefacto del pipeline | `dist/app-<commit>.zip` | `imageDetail.json` en el mismo bucket de S3 |
+| Artefacto del pipeline | `dist/app-<commit>.zip` | `imageDetail.json`, `taskdef.json` y `appspec.yaml` en el mismo bucket de S3 |
 | Se conserva | RDS `blacklist-db`, repositorio, pruebas, Postman, aplicación y configuración guardada de Beanstalk | igual |
 
 ### 1.1 Pruebas por endpoint
@@ -123,11 +123,11 @@ AWS CodeBuild · blacklist-devops-ci-build (buildspec.yml, con modo privilegiado
      │  1. Instala las dependencias (requirements-dev.txt)
      │  2. Ejecuta las pruebas con pytest ──── una falla ──▶ build Failed: sin imagen y sin despliegue
      │  3. Construye la imagen con la etiqueta del commit (<commit> y latest)
-     │  4. La envía a ECR y escribe imageDetail.json
+     │  4. La envía a ECR y escribe imageDetail.json; entrega también taskdef.json y appspec.yaml
      │  Registros de cada fase en Amazon CloudWatch Logs
      ▼
 Amazon ECR · blacklist-devops (etiquetas <commit> y latest)
-     │  imageDetail.json como artefacto del pipeline
+     │  imageDetail.json, taskdef.json y appspec.yaml como artefacto del pipeline
      ▼
      │  Etapa Despliegue
      ▼
