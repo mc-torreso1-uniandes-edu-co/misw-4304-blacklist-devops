@@ -4,6 +4,8 @@ on:
   pull_request:
     branches: [main, dev]
     types: [opened, synchronize, reopened, edited]
+  # lo lanza documento-pdf: sus commits no disparan pull_request y el PR necesita no-desde-main
+  workflow_dispatch:
 
 permissions: {}
 
@@ -24,12 +26,12 @@ jobs:
           fi
 
   no-desde-main:
-    if: github.base_ref == 'dev'
+    if: github.base_ref == 'dev' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Verificar que el PR hacia dev no viene de main
         env:
-          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
         run: |
           if [ "$HEAD_REF" = "main" ]; then
             echo "::error::No se hacen PR de main hacia dev: el contenido ya es el mismo. Cierra este PR."
