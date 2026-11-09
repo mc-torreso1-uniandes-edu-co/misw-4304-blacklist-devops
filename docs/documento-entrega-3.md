@@ -258,7 +258,7 @@ la tarea no arranca.
 | ARN | `arn:aws:ecr:us-east-2:253041091381:repository/blacklist-devops` |
 | Etiquetas | Mutables |
 | Cifrado | AES-256 |
-| Análisis de imágenes | El básico del registro |
+| Análisis de imágenes | El básico del registro, sin análisis al enviar (`scanOnPush: false`) ni reglas |
 | Política de ciclo de vida | Conserva las últimas 10 imágenes |
 | Imagen usada en el despliegue manual | `f224bef`, `sha256:8c217021f564a49fe178ce79257f97776bb64c581919b57b1dcd4fb476ddb644`, 60,43 MB, enviada el 5 de noviembre de 2026 a las 22:09:34 |
 | Imagen vigente de `latest` | `168dd91`, enviada por el pipeline el 8 de noviembre |
@@ -337,13 +337,15 @@ contenedor escribe allí con el controlador `awslogs` y el prefijo `ecs`.
 
 El balanceador es el único punto de entrada público: atiende HTTP en el puerto 80 desde `0.0.0.0/0`,
 sin dominio ni certificado, como el entorno de Beanstalk. Las tareas solo aceptan el 8000 desde el
-grupo de seguridad del balanceador, y la RDS solo el 5432 desde el grupo de las tareas; nadie llega a
-la base sin pasar por una tarea. Las tres subredes son públicas y la tarea tiene IP pública, porque no
-hay NAT gateway ni *endpoints* de VPC, que cobran por hora en el plan gratuito. En el despliegue
-manual, el *listener* de producción reenvía al grupo azul; el verde queda libre para que CodeDeploy
-registre la versión nueva y cambie el tráfico. La salud se comprueba en `/ping` con código 200, cada
-15 s, con 5 s de espera y dos comprobaciones para sano y dos para no sano; la anulación de registro
-es de 30 s. Ninguna de las pantallas de las capturas mostró el aviso de características avanzadas.
+grupo de seguridad del balanceador. La RDS acepta el 5432 desde el grupo de las tareas y, mientras se
+conserve el entorno de Beanstalk de la Entrega 2, desde `blacklist-app-sg` (`sg-042dcb7316bd23a0c`);
+esa regla sigue en `blacklist-db-sg` aunque hoy ninguna instancia la use. Las tres subredes son
+públicas y la tarea tiene IP pública, porque no hay NAT gateway ni *endpoints* de VPC, que cobran por
+hora en el plan gratuito. En el despliegue manual, el *listener* de producción reenvía al grupo azul;
+el verde queda libre para que CodeDeploy registre la versión nueva y cambie el tráfico. La salud se
+comprueba en `/ping` con código 200, cada 15 s, con 5 s de espera y dos comprobaciones para sano y dos
+para no sano; la anulación de registro es de 30 s. Ninguna de las pantallas de las capturas mostró el
+aviso de características avanzadas.
 
 ![Figura 3.6. Balanceador blacklist-devops-alb activo en us-east-2](capturas/entrega-3/1.9-alb-activo.png)
 
@@ -391,8 +393,7 @@ despliegue manual.
 Para los otros dos endpoints se generó un token estático con la clave del parámetro
 `/blacklist-devops/JWT_SECRET_KEY`, con las mismas reclamaciones que `scripts/generar_token.py`. La
 clave se leyó a una variable sin mostrarla y se borró al terminar; el token quedó en una variable de
-la sesión y no se imprimió ni se guardó. Un token generado el 12 de octubre respondió 401, como dice
-el contrato.
+la sesión y no se imprimió ni se guardó.
 
 ```bash
 curl -i -X POST $URL/blacklists -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
