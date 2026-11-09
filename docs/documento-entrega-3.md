@@ -211,7 +211,245 @@ CodeDeploy tarda en declarar fallido el despliegue.]
 
 ## 3. Configuración del despliegue en Fargate
 
-[PENDIENTE: tarea 3.2 (#212).]
+Cubre el 20 % del enunciado: la configuración manual del ambiente en AWS Fargate, el despliegue
+manual y la validación del microservicio. Todo está en la cuenta `253041091381` y en la región
+`us-east-2` (Ohio), bajo el plan gratuito de AWS: ninguna configuración activó características
+avanzadas ni cambió de plan. Los recursos se crearon a mano entre el 5 y el 8 de noviembre de 2026:
+el repositorio de ECR el 5 a las 22:02:55, los parámetros el 6 a las 00:36:16 y 00:39:05, los grupos
+de seguridad y de destino el 5, el balanceador el 7 a las 13:44, el grupo de registros y el clúster
+el 8, la definición de la tarea el 8 a las 14:52:21 y el servicio el 8 a las 15:10:36 (UTC-05:00).
+La configuración se hizo desde la consola de AWS y con la AWS CLI en AWS CloudShell: la consola para
+el repositorio, los parámetros, la red y el balanceador; la CLI para el clúster, la definición, el
+servicio y la validación. Los nombres de ECR, ECS, el balanceador y los parámetros que la sección 2
+anunciaba como propuesta quedan confirmados aquí; los de CodeDeploy quedan para la sección 4.
+
+El clúster, el servicio, el balanceador, los grupos de seguridad, el repositorio y los parámetros son
+los mismos que usa el pipeline. Lo que cambia en cada despliegue es la revisión de la definición de
+la tarea y el grupo de destino que atiende el tráfico: el despliegue manual de esta sección usó la
+revisión 1 y el grupo azul; las secciones 6 y 7 documentan las revisiones posteriores y el despliegue
+azul/verde, y la 5 es un CI fallido, sin despliegue.
+
+### 3.1 Orden de creación y dependencias
+
+| Paso | Recurso | Nombre | Depende de |
+|---|---|---|---|
+| 1 | Repositorio de Amazon ECR | `blacklist-devops` | Nada |
+| 2 | Parámetros de Parameter Store | `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` | La RDS de la Entrega 1 |
+| 3 | Roles de IAM | `blacklist-devops-ecs-execution-role` y los de CodeDeploy, CodeBuild y CodePipeline | La 1.6 |
+| 4 | Grupos de seguridad y de destino | `blacklist-devops-alb-sg`, `blacklist-devops-tareas-sg`, `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` | La VPC por defecto y la RDS |
+| 5 | Balanceador de aplicaciones | `blacklist-devops-alb` | Los grupos de seguridad y de destino |
+| 6 | Grupo de registros | `/ecs/blacklist-devops` | Nada |
+| 7 | Clúster de ECS | `blacklist-devops-cluster` | Nada |
+| 8 | Definición de la tarea | `blacklist-devops-task:1` | ECR, el rol de ejecución, los parámetros y el grupo de registros |
+| 9 | Servicio de ECS | `blacklist-devops-service` | El clúster, la definición, el balanceador y el grupo azul |
+
+El orden lo imponen las referencias. La definición de la tarea nombra la imagen, el rol de ejecución,
+los dos parámetros y el grupo de registros; el servicio nombra la definición y el grupo de destino
+azul, y el balanceador necesita antes sus grupos de seguridad y de destino. El grupo de registros se
+creó antes de la definición porque el rol de ejecución no tiene `logs:CreateLogGroup`: sin el grupo,
+la tarea no arranca.
+
+### 3.2 Repositorio de Amazon ECR
+
+| Propiedad | Valor |
+|---|---|
+| Nombre | `blacklist-devops` (privado) |
+| URI | `253041091381.dkr.ecr.us-east-2.amazonaws.com/blacklist-devops` |
+| ARN | `arn:aws:ecr:us-east-2:253041091381:repository/blacklist-devops` |
+| Etiquetas | Mutables |
+| Cifrado | AES-256 |
+| Análisis de imágenes | El básico del registro |
+| Política de ciclo de vida | Conserva las últimas 10 imágenes |
+| Imagen usada en el despliegue manual | `f224bef`, `sha256:8c217021f564a49fe178ce79257f97776bb64c581919b57b1dcd4fb476ddb644`, 60,43 MB, enviada el 5 de noviembre de 2026 a las 22:09:34 |
+| Imagen vigente de `latest` | `168dd91`, enviada por el pipeline el 8 de noviembre |
+
+El repositorio es privado y usa etiquetas mutables porque `latest` se mueve en cada envío; con
+etiquetas inmutables el segundo envío fallaría. La política de ciclo de vida conserva las últimas 10
+imágenes, suficientes para las ejecuciones de la entrega y una reversión. La imagen del despliegue
+manual se etiquetó con los siete primeros caracteres del commit, `f224bef`, y con `latest`; la
+definición de la tarea usa la etiqueta del commit y no `latest`, que ya apunta a una imagen posterior.
+
+![Figura 3.1. Repositorio blacklist-devops en ECR con la imagen f224bef y la etiqueta latest, en el momento del despliegue manual](capturas/entrega-3/1.7-ecr-imagen.png)
+
+### 3.3 Clúster y definición de la tarea
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-cluster` |
+| ARN | `arn:aws:ecs:us-east-2:253041091381:cluster/blacklist-devops-cluster` |
+| Capacidad | Solo `FARGATE`, con la estrategia por defecto de peso 1 |
+| Container Insights | Desactivado |
+| Estado | `ACTIVE` |
+
+El clúster solo admite el proveedor `FARGATE`; no se habilitó `FARGATE_SPOT` porque AWS puede
+interrumpir esas tareas. Container Insights quedó desactivado, que es el valor por defecto y no suma
+costo de métricas.
+
+![Figura 3.2. Clúster blacklist-devops-cluster: activo, solo Fargate y sin servicios ni tareas](capturas/entrega-3/1.10-cluster-detalle.png)
+
+| Dato | Valor |
+|---|---|
+| Familia y revisión | `blacklist-devops-task:1` |
+| ARN | `arn:aws:ecs:us-east-2:253041091381:task-definition/blacklist-devops-task:1` |
+| Estado y fecha | `ACTIVE`, 8 de noviembre de 2026, 14:52:21 (UTC-05:00) |
+| Compatibilidad | Fargate, modo de red `awsvpc`, Linux `X86_64` |
+| CPU y memoria | 256 (0,25 vCPU) y 512 MB |
+| Rol de ejecución | `arn:aws:iam::253041091381:role/blacklist-devops-ecs-execution-role` |
+| Contenedor | `blacklist-devops`, esencial, puerto 8000 |
+| Imagen | `253041091381.dkr.ecr.us-east-2.amazonaws.com/blacklist-devops:f224bef` |
+| Variable sin secreto | `APP_ENV=production` |
+| Secretos | `DATABASE_URL` y `JWT_SECRET_KEY`, por referencia a Parameter Store |
+| Registros | `awslogs`, grupo `/ecs/blacklist-devops`, región `us-east-2`, prefijo `ecs` |
+
+La definición usa el mínimo de Fargate, 256 (0,25 vCPU) y 512 MB, y alcanzó: la tarea arrancó a la
+primera y se mantuvo estable durante la validación. El contenedor escucha en el 8000, el mismo puerto
+del `Dockerfile` y de los grupos de destino. La imagen es la de la 1.7 con la etiqueta del commit.
+`APP_ENV=production` va en `environment` porque no es un secreto; `PROXY_FIX_X_FOR` no se define
+porque su valor por defecto, `1`, corresponde a un solo intermediario delante de la aplicación, el
+balanceador.
+
+![Figura 3.3. Definición blacklist-devops-task:1 activa, Fargate y con el rol de ejecución](capturas/entrega-3/1.10-tarea-detalle.png)
+
+`DATABASE_URL` y `JWT_SECRET_KEY` no están en la definición: aparecen en `secrets` como referencias a
+los parámetros `SecureString` de la 1.8, y solo el rol de ejecución puede leerlos. La definición no
+contiene ningún valor.
+
+![Figura 3.4. Parámetros de Parameter Store: los dos nombres, tipo SecureString y nivel Standard](capturas/entrega-3/1.8-parametros-lista.png)
+
+El grupo `/ecs/blacklist-devops` se creó antes de la definición, con retención de 7 días. El
+contenedor escribe allí con el controlador `awslogs` y el prefijo `ecs`.
+
+![Figura 3.5. Grupo de registros /ecs/blacklist-devops con retención de 7 días](capturas/entrega-3/1.10-registros-grupo.png)
+
+### 3.4 Red y balanceador
+
+| Recurso | Nombre | Identificador |
+|---|---|---|
+| Balanceador | `blacklist-devops-alb` | `arn:aws:elasticloadbalancing:us-east-2:253041091381:loadbalancer/app/blacklist-devops-alb/d9dba4feaa922997` |
+| Listener | HTTP:80 | `arn:aws:elasticloadbalancing:us-east-2:253041091381:listener/app/blacklist-devops-alb/d9dba4feaa922997/04ed0dc80674856c` |
+| Grupo de destino azul | `blacklist-devops-tg-azul` | `arn:aws:elasticloadbalancing:us-east-2:253041091381:targetgroup/blacklist-devops-tg-azul/a1b8d09bac2aeac7` |
+| Grupo de destino verde | `blacklist-devops-tg-verde` | `arn:aws:elasticloadbalancing:us-east-2:253041091381:targetgroup/blacklist-devops-tg-verde/4e13b6b7d966bc95` |
+| Grupo de seguridad del balanceador | `blacklist-devops-alb-sg` | `sg-0b172a6837b065ba8` |
+| Grupo de seguridad de las tareas | `blacklist-devops-tareas-sg` | `sg-007c5af5ee30b3237` |
+| Grupo de seguridad de la RDS | `blacklist-db-sg` | `sg-069b2890759666c52` |
+| Subredes | Tres públicas de la VPC por defecto | `subnet-08762e34c015fc2b4`, `subnet-06c85448a683b7fab` y `subnet-065be203aededfc61` |
+| Nombre DNS | `blacklist-devops-alb` | `blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com` |
+
+El balanceador es el único punto de entrada público: atiende HTTP en el puerto 80 desde `0.0.0.0/0`,
+sin dominio ni certificado, como el entorno de Beanstalk. Las tareas solo aceptan el 8000 desde el
+grupo de seguridad del balanceador, y la RDS solo el 5432 desde el grupo de las tareas; nadie llega a
+la base sin pasar por una tarea. Las tres subredes son públicas y la tarea tiene IP pública, porque no
+hay NAT gateway ni *endpoints* de VPC, que cobran por hora en el plan gratuito. En el despliegue
+manual, el *listener* de producción reenvía al grupo azul; el verde queda libre para que CodeDeploy
+registre la versión nueva y cambie el tráfico. La salud se comprueba en `/ping` con código 200, cada
+15 s, con 5 s de espera y dos comprobaciones para sano y dos para no sano; la anulación de registro
+es de 30 s. Ninguna de las pantallas de las capturas mostró el aviso de características avanzadas.
+
+![Figura 3.6. Balanceador blacklist-devops-alb activo en us-east-2](capturas/entrega-3/1.9-alb-activo.png)
+
+### 3.5 Servicio y validación
+
+Datos del servicio en el despliegue manual:
+
+| Dato | Valor |
+|---|---|
+| Nombre | `blacklist-devops-service` |
+| ARN | `arn:aws:ecs:us-east-2:253041091381:service/blacklist-devops-cluster/blacklist-devops-service` |
+| Clúster | `blacklist-devops-cluster` |
+| Definición | `blacklist-devops-task:1` |
+| Tipo de lanzamiento | Fargate, versión de plataforma 1.4.0 |
+| Controlador de despliegue | `CODE_DEPLOY` |
+| Tareas | 1 deseada, 1 en ejecución y 0 pendientes |
+| Red | Tres subredes públicas, `blacklist-devops-tareas-sg` e IP pública |
+| Balanceador | `blacklist-devops-tg-azul`, contenedor `blacklist-devops`, puerto 8000 |
+| Periodo de gracia de salud | 60 s |
+| Estado | Estable, con el destino azul `healthy` |
+| URL del API | `http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com` |
+
+El servicio se creó con una tarea, tipo de lanzamiento Fargate y controlador de despliegue
+`CODE_DEPLOY`, que es el que habilita el azul/verde con los dos grupos de destino. La tarea quedó
+registrada en el grupo azul, con un periodo de gracia de salud de 60 s: la salud necesita dos
+comprobaciones de 15 s y así ECS no reemplaza la tarea mientras Gunicorn arranca. El servicio alcanzó
+el estado estable con 1 tarea en ejecución, 0 pendientes y el destino azul `healthy`.
+
+![Figura 3.7. Servicio blacklist-devops-service estable con 1 tarea y la definición blacklist-devops-task:1](capturas/entrega-3/1.11-servicio-estable.png)
+
+![Figura 3.8. Tarea del servicio en estado Ejecutando](capturas/entrega-3/1.11-tarea-ejecucion.png)
+
+![Figura 3.9. Grupo de destino azul con 1 destino sano y 0 en mal estado](capturas/entrega-3/1.11-tg-azul-sano.png)
+
+La validación se hizo contra la URL del balanceador, desde CloudShell:
+
+```bash
+URL=http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com
+curl -i $URL/ping
+```
+
+`GET /ping`, sin token, respondió 200 con `{"version": "f224bef"}`, la etiqueta de la imagen del
+despliegue manual.
+
+Para los otros dos endpoints se generó un token estático con la clave del parámetro
+`/blacklist-devops/JWT_SECRET_KEY`, con las mismas reclamaciones que `scripts/generar_token.py`. La
+clave se leyó a una variable sin mostrarla y se borró al terminar; el token quedó en una variable de
+la sesión y no se imprimió ni se guardó. Un token generado el 12 de octubre respondió 401, como dice
+el contrato.
+
+```bash
+curl -i -X POST $URL/blacklists -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"email":"fargate-1-11@example.com","app_uuid":"3f2c7a52-6b1e-4d7a-9d57-1a5a0f4b2c11","blocked_reason":"prueba de la tarea 1.11"}'
+
+curl -i $URL/blacklists/fargate-1-11@example.com -H "Authorization: Bearer $TOKEN"
+```
+
+El `POST` respondió 201 con `{"msg": "Email agregado a la lista negra", "id": 19}` y el `GET` 200 con
+`is_blacklisted: true` y `blocked_reason: "prueba de la tarea 1.11"`. El `POST` dejó la fila `id` 19
+en `blacklist-db`, la base compartida con las entregas anteriores, así que la validación usó
+PostgreSQL real y no SQLite. El balanceador atiende HTTP sin TLS, así que el token viaja sin cifrar
+entre el cliente y el balanceador; es una limitación conocida y queda anotada.
+
+![Figura 3.10. GET /ping contra el balanceador: 200 con la versión f224bef](capturas/entrega-3/1.11-api-ping.png)
+
+![Figura 3.11. POST /blacklists y GET /blacklists/<email> contra el balanceador: 201 y 200, sin mostrar el token](capturas/entrega-3/1.11-api-post-get.png)
+
+**Estado al cierre de esta sección.** Después de la validación manual, el pipeline desplegó la
+revisión 3 de `blacklist-devops-task` con la imagen `168dd91` y movió el *listener* de producción al
+grupo verde, que tiene 1 destino sano; el servicio quedó apuntando a ese grupo y sigue con 1 tarea en
+ejecución. La revisión 1, la del despliegue manual, sigue `ACTIVE` y es la base de la familia. Las
+capturas de esta sección son del despliegue manual, anteriores a ese despliegue; las ejecuciones
+automáticas se documentan en las secciones 5 a 7.
+
+### 3.6 Versiones y costo
+
+| Componente | Versión |
+|---|---|
+| Python | 3.13.16 (`python:3.13.16-slim` del espejo público de ECR) |
+| Gunicorn | 26.2.0, 2 workers |
+| Usuario del contenedor | `appuser`, UID 10001 |
+| Imagen | `f224bef`, `linux/amd64`, 60,43 MB |
+| Digest | `sha256:8c217021f564a49fe178ce79257f97776bb64c581919b57b1dcd4fb476ddb644` |
+
+El resto del stack —Flask 3.1.3, SQLAlchemy 2.1.4, marshmallow 4.3.1, Flask-JWT-Extended 4.7.4,
+Werkzeug 3.1.9 y psycopg 3.3.6— es el de la sección 1. La imagen parte de `python:3.13.16-slim` y
+corre con Gunicorn, dos workers y el usuario `appuser` (UID 10001), sin privilegios. `/ping` responde
+la etiqueta del commit, así que la versión que atiende se rastrea hasta el commit que la produjo; en
+el despliegue manual respondió `f224bef`.
+
+| Recurso | Costo |
+|---|---|
+| Tarea de Fargate | 0,0123 USD/h (0,25 vCPU + 0,5 GB) |
+| Balanceador y sus IPv4 | 0,0375 USD/h |
+| Servicio de ECS | Sin costo |
+| Grupo de registros | Ingesta y almacenamiento mínimos, retención de 7 días |
+| Total con el servicio encendido | Unos 0,05 USD/h |
+
+Con el servicio encendido, la tarea y el balanceador cuestan unos 0,05 USD/h; el diseño redondea a
+0,06 USD/h y estima cerca de 1,5 USD por día sin la RDS. Para dejar de pagar la tarea se baja el
+servicio a cero con `aws ecs update-service ... --desired-count 0`; el balanceador sigue cobrando
+aunque no haya tareas, así que los recursos solo se encienden mientras se trabaja y se graba.
+
+El despliegue manual es la base que el pipeline reproduce: la misma familia de definición y el mismo
+servicio, con la diferencia de que CodeDeploy registra una revisión nueva con la imagen del commit y
+mueve el tráfico sin intervención. Las secciones 5 a 7 documentan esas ejecuciones.
 
 ## 4. Archivos de configuración y pipeline
 
