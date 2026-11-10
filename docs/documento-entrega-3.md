@@ -601,10 +601,10 @@ documentan en la sección 7.
    asociado al balanceador y sus destinos no se verifican hasta que reciben el tráfico; AWS lo
    documenta en la guía de solución de problemas de CodeDeploy para ECS. El cambio del *listener* fue
    a las 18:05:27 y ninguna consulta a `/ping` falló porque la versión nueva estaba bien. El conjunto
-   anterior siguió dos minutos más en el grupo verde antes de terminarse. Por esta limitación, en la
-   prueba del CD fallido (sección 7) el grupo de despliegue pasa a
+   anterior siguió dos minutos más en el grupo verde antes de terminarse. Por esta limitación, desde
+   la prueba del CD fallido (sección 7) el grupo de despliegue usa
    `CodeDeployDefault.ECSCanary10Percent5Minutes`, que verifica la salud del grupo de sustitución
-   antes de mover el tráfico.
+   antes de mover el tráfico (votación del equipo del 10 de noviembre).
 5. **Los grupos de destino se alternan.** El despliegue de la 1.16 dejó el tráfico en el grupo verde;
    este lo pasó al azul. El siguiente despliegue usará el verde.
 6. **La instalación de Python ocupa casi todo el build.** `INSTALL` tardó 172 s, porque `pyenv`
