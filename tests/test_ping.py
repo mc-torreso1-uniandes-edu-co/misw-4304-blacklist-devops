@@ -52,10 +52,3 @@ def test_read_app_version_returns_default_when_file_is_empty(tmp_path):
     version_file.write_text("  \n", encoding="utf-8")
 
     assert read_app_version(version_file) == constants.DEFAULT_APP_VERSION
-
-
-# Falla a propósito para la ejecución fallida del pipeline (2.4). La 2.5 la retira.
-def test_intentional_failure_for_the_pipeline(client):
-    response = client.get(constants.PING_PATH)
-
-    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR

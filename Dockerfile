@@ -21,4 +21,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "application:application"]
+CMD ["gunicorn", "--bind", ":8001", "--workers", "2", "application:application"]
