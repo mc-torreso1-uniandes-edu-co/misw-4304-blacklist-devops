@@ -460,7 +460,157 @@ commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 5 a 7 doc
 
 ## 5. Pipeline de CI fallido
 
-[PENDIENTE: tarea 3.4 (#214).]
+La sección 4 documenta los archivos de configuración y el pipeline; esta sección documenta la
+ejecución que falló en la integración continua, el punto 1 del documento del enunciado (4 %). Es la
+ejecución `e363652d`, disparada por el *merge* de la promoción #254 en `main` con una prueba que
+falla a propósito. El *build* se detuvo en las pruebas: no se construyó ni se envió la imagen y no
+hubo despliegue. El servicio de Fargate siguió con la versión que dejó la 2.3, `db6e990`.
+
+La ejecución es del **9 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
+Las horas están en UTC-05:00. No se creó infraestructura nueva: se usaron el clúster, el servicio, el
+balanceador y los grupos de destino de la sección 3. La prueba que falla llegó a `dev` con el PR #253
+y a `main` con la promoción #254; el *push* del *merge commit* inició el pipeline sin intervención
+manual.
+
+### 5.1 Resultado de la ejecución
+
+| Dato | Valor |
+|---|---|
+| Prueba que falla | `tests/test_ping.py::test_intentional_failure_for_the_pipeline`: espera un 500 de `GET /ping` y recibe 200 |
+| Commit | `299125dd058444412b8fe8a98a911fa680fc57dc` (`299125d`), *merge commit* de la promoción #254 en `main`, 22:58:01 |
+| Disparador | `WebhookV2`, tipo `PUSH_BRANCH`, rama `main`, 5 s después del *merge* |
+| Ejecución | `e363652d-c9ec-4d5d-8f9e-86808614d9c0`, versión 5 del pipeline, **Failed** |
+| Duración | 3 min 42 s; inicio 22:58:06 y fin 23:01:48 |
+| Etapa *Source* | *Succeeded*, 6 s |
+| Etapa *Build* | *Failed*: `Build terminated with state: FAILED. Phase: BUILD, Code: COMMAND_EXECUTION_ERROR` |
+| Build | `blacklist-devops-ci-build:15627757-aee6-44aa-b554-5cb8752b0212` (compilación 29), **FAILED** en la fase `BUILD` |
+| Pruebas | 157 en total: `1 failed, 156 passed in 1.03s`; cobertura del 100 % (290 sentencias) |
+| Etapa *Deploy* | **No se ejecutó** |
+| Imagen | **Ninguna nueva**: no hay `blacklist-devops:299125d` en ECR (`ImageNotFoundException`); la última sigue siendo `latest, db6e990` |
+| CodeDeploy | **Ningún despliegue nuevo**: el último sigue siendo `d-UKCBNTBGL` |
+| Servicio | Sin cambios: `blacklist-devops-task:4`, 1 tarea en `blacklist-devops-tg-azul` y 1 destino sano; no se registró otra revisión |
+| `GET /ping` | `{"version": "db6e990"}` en las 360 consultas del monitor, de 22:57:39 a 23:09:37 |
+
+La suite base tiene 156 pruebas; la ejecución de la 2.4 corre 157 porque suma la prueba que falla a
+propósito. De las 157, 156 pasan y una falla, que es el resultado esperado de esta prueba.
+
+### 5.2 Línea de tiempo
+
+| Hora | Evento |
+|---|---|
+| 22:11:02 | Se fusiona el PR #253 en `dev` (*squash* `41306da`): agrega la prueba que falla |
+| 22:31:19 | Se fusiona el PR #255 (3.5) en `dev` (`b899b0e`); la promoción pierde la aprobación porque `protect-main` exige aprobar el último *push*, y se vuelve a aprobar a las 22:46 |
+| 22:57:39 | Empieza el monitor de `/ping`, una consulta cada 2 s |
+| 22:58:01 | Se fusiona la promoción #254 en `main` (*merge commit* `299125d`) |
+| 22:58:06 | Inicia la ejecución `e363652d`, 5 s después del *push* |
+| 22:58:06 – 22:58:12 | *Source*: descarga `299125d` de GitHub |
+| 22:58:13 | Inicia el build 29 de CodeBuild |
+| 22:58:23 – 23:01:22 | `INSTALL`: instala Python 3.13.16 y las dependencias (178 s) |
+| 23:01:22 | `BUILD`: inicia `python -m pytest -q --cov=app` |
+| 23:01:24 | `pytest` termina con código de salida 1 y la fase `BUILD` queda en `FAILED`; no se ejecutan las validaciones, el inicio de sesión en ECR ni el `docker build` |
+| 23:01:24 | `POST_BUILD` termina en *Succeeded* sin enviar nada; `UPLOAD_ARTIFACTS` omite `imageDetail.json` y sube `taskdef.json` y `appspec.yaml` |
+| 23:01:24 | Termina el build en `FAILED` |
+| 23:01:48 | La etapa *Build* y la ejecución terminan en *Failed*; *Deploy* no inicia |
+| 23:09:37 | Termina el monitor: 360 consultas, todas 200 con `db6e990` |
+
+`GET /ping` por el balanceador, consultado cada 2 s desde las 22:57:39: las 360 consultas respondieron
+200 con `{"version": "db6e990"}`. La latencia fue de 195 a 611 ms, con un promedio de 235 ms.
+
+### 5.3 Pipeline y build
+
+La ejecución con *Source* en verde, *Build* en rojo y *Deploy* con «No se ejecutó». El resumen muestra
+el desencadenador: el commit `299125d` enviado a `main` con el mensaje de la promoción, y el mensaje
+de error de `pytest`.
+
+![Figura 5.1. Ejecución e363652d del pipeline: Source en verde, Build en rojo y Deploy con «No se ejecutó»; el desencadenador es el commit 299125d de la promoción](capturas/entrega-3/2.4-pipeline-ejecucion.png)
+
+Historial: la ejecución `e363652d` en *Error* sobre la `31b06edb` de la 2.3; las dos se iniciaron con
+un commit en `main`.
+
+![Figura 5.2. Historial de ejecuciones: e363652d en Error sobre 31b06edb; las dos se iniciaron con un commit en main](capturas/entrega-3/2.4-pipeline-historial.png)
+
+Fases del build 29: `INSTALL` y las anteriores en *Realizado correctamente*, `BUILD` en *Error* con
+`COMMAND_EXECUTION_ERROR` sobre `python -m pytest -q --cov=app`. El iniciador es
+`codepipeline/blacklist-devops-ci-pipeline` y la versión de origen resuelta es `299125d`.
+
+![Figura 5.3. Fases del build 29: INSTALL y las anteriores correctas, BUILD en Error con COMMAND_EXECUTION_ERROR sobre pytest](capturas/entrega-3/2.4-build-fases.png)
+
+Registro del build: la prueba `test_intentional_failure_for_the_pipeline` falla con
+`assert 200 == 500`, la cobertura sigue en 100 % y el resumen es `1 failed, 156 passed`. La fase
+`BUILD` termina en `FAILED`.
+
+![Figura 5.4. Registro del build: la prueba intencional falla con assert 200 == 500, la cobertura sigue en 100 % y el resumen es 1 failed, 156 passed](capturas/entrega-3/2.4-build-pruebas.png)
+
+Después del fallo: `POST_BUILD` ejecuta el bloque del envío, pero `CODEBUILD_BUILD_SUCCEEDING` no es
+`1` y no hay `docker push`. `UPLOAD_ARTIFACTS` muestra `Skipping invalid file path imageDetail.json` y
+`Found 2 file(s)`.
+
+![Figura 5.5. Fin del registro del build: POST_BUILD no envía la imagen porque CODEBUILD_BUILD_SUCCEEDING no es 1, y UPLOAD_ARTIFACTS omite imageDetail.json](capturas/entrega-3/2.4-build-artefacto.png)
+
+### 5.4 Sin imagen ni despliegue
+
+Repositorio `blacklist-devops`: cinco imágenes y ninguna con la etiqueta `299125d`. La más reciente
+sigue siendo `latest, db6e990`, del 9 de noviembre a las 18:03:11.
+
+![Figura 5.6. Repositorio blacklist-devops en ECR: cinco imágenes y ninguna con la etiqueta 299125d; la más reciente sigue siendo latest, db6e990](capturas/entrega-3/2.4-ecr-imagenes.png)
+
+Historial de CodeDeploy: solo los despliegues de la 1.16 (`d-TEOBBBNFL`) y de la 2.3 (`d-UKCBNTBGL`).
+La etapa *Deploy* no se ejecutó, así que la acción *Deploy* no registró ninguna revisión nueva y
+CodeDeploy no creó ningún despliegue. El historial muestra las dos entradas como «Acción del usuario»,
+el nombre que da CodeDeploy a los despliegues creados por una llamada a su API, incluidos los de la
+acción *Deploy* del pipeline; no implica intervención manual (sección 6.5, hallazgo 7).
+
+![Figura 5.7. Historial de CodeDeploy: solo d-UKCBNTBGL y d-TEOBBBNFL; no hay despliegue de la ejecución fallida](capturas/entrega-3/2.4-codedeploy-despliegues.png)
+
+Servicio `blacklist-devops-service` a las 23:10: revisión `blacklist-devops-task:4`, 1 tarea en
+ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
+
+![Figura 5.8. Servicio blacklist-devops-service: revisión blacklist-devops-task:4, 1 tarea en ejecución y 1 destino sano en blacklist-devops-tg-azul](capturas/entrega-3/2.4-ecs-servicio.png)
+
+### 5.5 Hallazgos
+
+1. **El fallo de las pruebas detiene todo lo que sigue.** `pytest` es el primer comando de la fase
+   `BUILD`: al salir con código 1, CodeBuild marca la fase como fallida y no ejecuta los comandos
+   siguientes (validaciones, inicio de sesión en ECR y `docker build`). El pipeline no pasa a
+   *Deploy*, así que la acción *Deploy* no registra una revisión nueva, CodeDeploy no crea un
+   despliegue y Fargate sigue con la versión anterior. Es el comportamiento que fijó la decisión 4 de
+   la 1.2.
+2. **`POST_BUILD` se ejecuta aunque el build ya haya fallado.** CodeBuild corre siempre esa fase; lo
+   que impide el envío es la condición `CODEBUILD_BUILD_SUCCEEDING = 1` del `buildspec.yml`, no el
+   `set -e`. La fase termina en *Succeeded* sin ejecutar ningún `docker push`. El `set -e` solo hace
+   fallar el build si falla el envío.
+3. **El artefacto sale incompleto, pero no llega a usarse.** `UPLOAD_ARTIFACTS` terminó en
+   *Succeeded*: omitió `imageDetail.json`, que no existe, y subió `taskdef.json` y `appspec.yaml`. En
+   la Entrega 2 esa fase fallaba porque el único archivo del artefacto no existía. Aquí no tiene
+   efecto: el pipeline se detiene en *Build* y *Deploy* no recibe ese artefacto.
+4. **El servicio no se vio afectado.** Las 360 consultas a `/ping` durante y después de la ejecución
+   respondieron 200 con `db6e990`. No hubo imagen ni revisión de la definición de la tarea nuevas, y
+   el *listener* siguió en `blacklist-devops-tg-azul`.
+5. **La vista general del pipeline puede confundir.** Después del fallo, el estado de la canalización
+   (`get-pipeline-state`) muestra *Deploy* en *Succeeded*, pero ese estado es de la ejecución anterior
+   (`31b06edb`). La vista de la ejecución `e363652d` es la que dice «No se ejecutó».
+6. **El fallo se conoce en unos 3 minutos.** La ejecución duró 3 min 42 s, y `INSTALL` ocupó 178 s del
+   build porque `pyenv` compila Python 3.13.16 en cada ejecución. Las pruebas fallaron en 2 s. El CI
+   fallido de la Entrega 2 (2.9, #113) duró 38 s porque su build no instalaba Python ni construía
+   imágenes.
+7. **`main` queda con el CI en rojo hasta la 2.5.** Mientras la prueba siga en `main`, cualquier
+   promoción fallaría igual. La 2.5 (#209) la retira en la misma promoción que provoca el CD fallido;
+   hasta entonces no se promueve nada más a `main`.
+
+### 5.6 Cumplimiento del punto 1 del documento
+
+| Requisito del punto 1 (4 %) | Evidencia |
+|---|---|
+| Ejecución de CI fallida documentada: commit, disparador y etapa que falla | 5.1 y 5.2 (datos); figuras 5.1 y 5.2 en 5.3 |
+| Causa y mensaje del fallo | 5.3; figuras 5.3 y 5.4 |
+| Qué no se ejecuta: imagen y despliegue | 5.3 y 5.4; figuras 5.5 a 5.8 |
+| Hallazgos y capturas de los servicios de AWS | 5.3 a 5.5; siete hallazgos y ocho figuras |
+| Servicio sin cambios | 5.4; figura 5.8 y `/ping` con `db6e990` |
+
+Con esta ejecución, el punto 1 del documento queda cubierto: el commit disparó el CI, el build falló
+en la prueba que falla a propósito y no se construyó ni se envió la imagen; la acción *Deploy* no se
+ejecutó y el servicio siguió con `db6e990`. El CI y el CD exitosos se documentan en la sección 6, y
+el CD fallido en la sección 7.
 
 ## 6. Pipeline de CI y CD exitosos
 
