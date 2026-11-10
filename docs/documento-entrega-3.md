@@ -462,7 +462,164 @@ mueve el tráfico sin intervención. Las secciones 5 a 7 documentan esas ejecuci
 
 ## 6. Pipeline de CI y CD exitosos
 
-[PENDIENTE: tarea 3.5 (#215).]
+La sección 3 cerró con la revisión 3 de `blacklist-devops-task` (`168dd91`) y el tráfico en el grupo
+de destino verde. Esta sección documenta la ejecución que desplegó la revisión 4 (`db6e990`) y
+devolvió el tráfico al grupo azul. Es el punto 2 del documento del enunciado (8 %): un CI exitoso
+seguido de un CD exitoso, con hallazgos y capturas de los servicios de AWS.
+
+La ejecución es del **9 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
+Las horas están en UTC-05:00. No se creó infraestructura nueva: se usaron el clúster, el servicio, el
+balanceador y los grupos de destino de la sección 3. La configuración de los archivos y del pipeline
+se documenta en la sección 4; esta sección se centra en la ejecución.
+
+### 6.1 Resultado de la ejecución
+
+| Dato | Valor |
+|---|---|
+| Commit | `db6e99013812c059c32fe62e50e1cfcc8f7d21ee` (`db6e990`), *merge commit* del PR #250 en `main`, 17:59:35 |
+| Disparador | `WebhookV2`, tipo `PUSH_BRANCH`, rama `main`, 3 s después del *merge* |
+| Ejecución | `31b06edb-3f43-44e3-ac71-9af3f42c7f24`, versión 5 del pipeline, **Succeeded** |
+| Duración | 8 min 19 s; inicio 17:59:38 y fin 18:07:58, según el resumen de la ejecución |
+| Build | `blacklist-devops-ci-build:ba2e2bd9-e129-49d4-9136-b8cb65caae8c` (compilación 28), **Succeeded**: 156 pruebas aprobadas, cobertura del 100 % |
+| Imagen | `blacklist-devops:db6e990` y `latest`, el mismo *digest* `sha256:18b1b9cd0ba427568434fb47ef6fdd6153dba4579bfe0a4aa852f6c76973e04f`, 60,43 MB |
+| Despliegue | `d-UKCBNTBGL`, aplicación `blacklist-devops-app`, grupo `blacklist-devops-dg`, `CodeDeployDefault.ECSAllAtOnce`, **Succeeded**, sin reversión |
+| Definición | `blacklist-devops-task:4`, registrada por la acción *Deploy* (`CodeDeployToECS`) del pipeline con `taskdef.json`; conserva 256/512 y los secretos por referencia |
+| Tráfico | El *listener* HTTP:80 pasó de `blacklist-devops-tg-verde` (revisión 3, `168dd91`) a `blacklist-devops-tg-azul` (revisión 4, `db6e990`) |
+| Servicio | `blacklist-devops-task:4`, 1 tarea en ejecución |
+| `GET /ping` | `{"version": "db6e990"}`, la etiqueta del commit de la promoción |
+
+La ejecución la inició el *push* a `main`, no una persona. La acción *Deploy* del pipeline
+registra la revisión 4 de la definición a partir de `taskdef.json` y de `imageDetail.json`, y
+CodeDeploy crea el conjunto de tareas de sustitución y mueve el tráfico. La definición conserva los
+secretos por referencia a Parameter Store: `DATABASE_URL` y `JWT_SECRET_KEY` no tienen valores en el
+archivo ni en las capturas.
+
+### 6.2 Línea de tiempo
+
+| Hora | Evento |
+|---|---|
+| 17:59:35 | Se fusiona el PR #250 en `main` (*merge commit* `db6e990`) |
+| 17:59:38 | Inicia la ejecución `31b06edb`, 3 s después del *push* |
+| 17:59:38 – 17:59:43 | *Source*: descarga `db6e990` de GitHub |
+| 17:59:44 – 18:03:19 | *Build*: instala Python 3.13.16, ejecuta las pruebas, construye la imagen y la envía a ECR |
+| 18:03:11 | La imagen `db6e990` llega a ECR |
+| 18:03:20 | Inicia *Deploy*; a las 18:03:21 se registra `blacklist-devops-task:4` y se crea `d-UKCBNTBGL` |
+| 18:03:23 – 18:05:26 | `Install`: el conjunto de tareas de sustitución arranca y pasa la verificación de salud en `blacklist-devops-tg-azul` |
+| 18:05:27 | `AllowTraffic`: el *listener* de producción pasa al grupo azul (100 % del tráfico) |
+| 18:05:28 – 18:07:29 | Espera de 2 minutos y terminación del conjunto de tareas original |
+| 18:07:29 | `d-UKCBNTBGL` termina en *Succeeded* |
+| 18:07:58 | La etapa *Deploy* y la ejecución terminan en *Succeeded* |
+
+`GET /ping` por el balanceador, consultado cada 33 s durante la ejecución: respondió
+`{"version": "168dd91"}` hasta las 18:05:20 y `{"version": "db6e990"}` desde las 18:05:53. Ninguna
+consulta falló.
+
+### 6.3 Pipeline y build
+
+La ejecución con las tres etapas en verde. El resumen muestra el desencadenador: el commit `db6e990`
+enviado a `main` con el mensaje de la promoción.
+
+![Figura 6.1. Ejecución 31b06edb del pipeline con las tres etapas en verde y el commit db6e990 de la promoción como desencadenador](capturas/entrega-3/2.3-pipeline-ejecucion.png)
+
+Línea temporal: *Source* 5 s, *Build* 3 min 35 s y *Deploy* 4 min 37 s.
+
+![Figura 6.2. Línea temporal de la ejecución: Source 5 s, Build 3 min 35 s y Deploy 4 min 37 s](capturas/entrega-3/2.3-pipeline-linea-temporal.png)
+
+Fases del build, todas en *Realizado correctamente*. La versión de origen resuelta es `db6e990` y el
+iniciador es `codepipeline/blacklist-devops-ci-pipeline`.
+
+![Figura 6.3. Fases del build ba2e2bd9, todas completadas, con la versión de origen db6e990 y el iniciador del pipeline](capturas/entrega-3/2.3-build-fases.png)
+
+Registro del build: cobertura del 100 % y `156 passed`, seguido de las validaciones de `COMMIT_ID`,
+`AWS_ACCOUNT_ID` y `AWS_DEFAULT_REGION`, el inicio de sesión en ECR y el `docker build` con la
+etiqueta del commit.
+
+![Figura 6.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 %, validaciones y construcción de la imagen db6e990](capturas/entrega-3/2.3-build-pruebas.png)
+
+Envío a ECR: `db6e990` y `latest` con el mismo *digest*, `imageDetail.json` con la dirección de la
+imagen y el artefacto con `imageDetail.json`, `taskdef.json` y `appspec.yaml`.
+
+![Figura 6.5. Envío de la imagen db6e990 y latest a ECR y artefacto con imageDetail.json, taskdef.json y appspec.yaml](capturas/entrega-3/2.3-build-envio-ecr.png)
+
+### 6.4 Imagen en ECR y despliegue azul/verde
+
+Repositorio `blacklist-devops`: la imagen `latest, db6e990` de las 18:03:11, extraída por Fargate a
+las 18:03:42.
+
+![Figura 6.6. Repositorio blacklist-devops en ECR con la imagen db6e990 y latest, enviada a las 18:03:11 y extraída por Fargate a las 18:03:42](capturas/entrega-3/2.3-ecr-imagen.png)
+
+`d-UKCBNTBGL`: los cuatro pasos completados y el 100 % del tráfico en el conjunto de tareas de
+sustitución.
+
+![Figura 6.7. Despliegue d-UKCBNTBGL de CodeDeploy con los cuatro pasos completados y el 100 % del tráfico en el conjunto de sustitución](capturas/entrega-3/2.3-codedeploy-despliegue.png)
+
+La tabla de conjuntos de tareas no se había refrescado: todavía muestra el conjunto original como
+`ACTIVE` con 1 tarea, aunque el paso 4 (terminación del conjunto original) ya aparece completado a
+las 18:07:29. La terminación se comprueba por el paso 4 y por el estado del servicio, no por esa
+tabla.
+
+*Listener* HTTP:80 del balanceador, que ahora reenvía a `blacklist-devops-tg-azul`.
+
+![Figura 6.8. Listener HTTP:80 del balanceador blacklist-devops-alb reenviando al grupo de destino azul](capturas/entrega-3/2.3-alb-listener.png)
+
+La verificación de salud del grupo de destino consulta `/ping` cada 15 s, con 5 s de espera, dos
+comprobaciones para sano y dos para no sano; la tarea nueva pasó antes del cambio de tráfico.
+`GET /ping` no requiere
+token y no consulta la base, así que la versión se comprueba sin depender de la RDS:
+
+```bash
+URL=http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com
+curl -s $URL/ping
+# {"version": "db6e990"}
+```
+
+El grupo de despliegue tiene la reversión automática activa ante `DEPLOYMENT_FAILURE`; en esta
+ejecución no se activó porque el despliegue terminó en *Succeeded*. El CD fallido y la reversión se
+documentan en la sección 7.
+
+### 6.5 Hallazgos
+
+1. **El commit en `main` dispara el pipeline completo.** La ejecución inició 3 s después del *merge*,
+   con el disparador `WebhookV2` y `PUSH_BRANCH` sobre `main`. La 1.16 se había comprobado con una
+   ejecución manual (`6ff261a0`, iniciada con `StartPipelineExecution`); esta es la primera que inicia
+   sola un commit.
+2. **El despliegue depende del CI.** *Deploy* empezó 1 s después de que terminó *Build*. Las pruebas
+   son el primer comando de la fase `build`: si una falla, CodeBuild detiene la fase ahí y no se
+   ejecuta el `docker build`. Además, `post_build` solo envía la imagen a ECR si
+   `CODEBUILD_BUILD_SUCCEEDING` es `1`. El `set -e` no es lo que impide el envío; solo hace fallar el
+   build si falla el envío. Ese caso es la sección 5.
+3. **La versión desplegada es trazable al commit.** La etiqueta de la imagen, la definición
+   `blacklist-devops-task:4` y `/ping` dicen `db6e990`, que es el commit del *push*. `latest` apunta
+   al mismo *digest*.
+4. **No hubo corte de servicio.** El conjunto de tareas nuevo arrancó y pasó la verificación de salud
+   en el grupo azul antes de recibir tráfico. El cambio del *listener* fue a las 18:05:27 y ninguna
+   consulta a `/ping` falló. El conjunto anterior siguió dos minutos más en el grupo verde, disponible
+   para revertir, antes de terminarse.
+5. **Los grupos de destino se alternan.** El despliegue de la 1.16 dejó el tráfico en el grupo verde;
+   este lo pasó al azul. El siguiente despliegue usará el verde.
+6. **La instalación de Python ocupa casi todo el build.** `INSTALL` tardó 172 s, porque `pyenv`
+   compila Python 3.13.16 en cada ejecución. Las pruebas tardaron menos de 1 s y el `docker build` y
+   el envío, unos 22 s. Es la parte que se puede acortar si hace falta, con una imagen de compilación
+   que ya traiga esa versión.
+7. **CodeDeploy muestra el despliegue como «Acción del usuario».** Es el nombre que da a los
+   despliegues creados por una llamada a su API, que en este caso hizo la acción *Deploy* del
+   pipeline: `d-UKCBNTBGL` es el identificador externo de esa acción en la ejecución `31b06edb`.
+   Nadie lo inició a mano.
+
+### 6.6 Cumplimiento del punto 2 del documento
+
+| Requisito del punto 2 (8 %) | Evidencia |
+|---|---|
+| Ejecución de CI exitosa: commit, build y pruebas | Secciones 6.1 y 6.2; figuras 6.1 a 6.4 |
+| Imagen del contenedor en ECR con la etiqueta del commit | Sección 6.3; figuras 6.5 y 6.6 |
+| CD exitoso en Fargate sin intervención manual | Sección 6.4; figuras 6.7 y 6.8; hallazgos 1 y 7 |
+| Aplicación respondiendo con la versión nueva | Secciones 6.2 y 6.4; `/ping` con `db6e990` |
+| Hallazgos y capturas de los servicios de AWS | Secciones 6.3 a 6.5; ocho figuras y siete hallazgos |
+
+Con esta ejecución, el punto 2 del documento queda cubierto: el commit disparó el CI, el build
+ejecutó las 156 pruebas y publicó la imagen, y CodeDeploy desplegó la revisión 4 en Fargate sin
+intervención manual; `/ping` confirmó la versión nueva. El CI fallido y el CD fallido se documentan
+en las secciones 5 y 7.
 
 ## 7. CI exitoso y CD fallido, con reversión
 
