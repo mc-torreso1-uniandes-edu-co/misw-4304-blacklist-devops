@@ -133,7 +133,7 @@ Amazon ECR · blacklist-devops (etiquetas <commit> y latest)
      ▼
 AWS CodeDeploy · blacklist-devops-app / blacklist-devops-dg
      │  Azul/verde sobre el servicio de ECS (controlador CODE_DEPLOY)
-     │  Registra blacklist-devops-task con la imagen nueva
+     │  La acción Deploy registra la revisión con la imagen nueva
      │  Traslada el tráfico del grupo de destino azul al verde
      │  ── salud fallida ──▶ reversión automática a la versión anterior
      ▼
@@ -179,9 +179,10 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
    etiquetas `<commit>` y `latest`, y escribe `imageDetail.json`. Si una falla, el build y la ejecución
    terminan en *Failed*: no hay imagen nueva y CodeDeploy no se ejecuta.
 5. La etapa Despliegue entrega `imageDetail.json`, `appspec.yaml` y `taskdef.json` a CodeDeploy.
-6. CodeDeploy registra una revisión de `blacklist-devops-task` con la imagen nueva, levanta la
-   versión verde y traslada el tráfico del grupo azul al verde cuando la verificación de salud en
-   `/ping` responde 200. Si la versión nueva no pasa la salud, revierte a la versión anterior.
+6. La acción *Deploy* del pipeline registra una revisión de `blacklist-devops-task` con la imagen
+   nueva; CodeDeploy levanta la versión verde y traslada el tráfico del grupo azul al verde cuando la
+   verificación de salud en `/ping` responde 200. Si la versión nueva no pasa la salud, revierte a la
+   versión anterior.
 7. `/ping` responde la etiqueta del commit desplegado, así que la versión que atiende se comprueba
    con una solicitud sin token.
 
@@ -261,7 +262,7 @@ la tarea no arranca.
 | Análisis de imágenes | El básico del registro, sin análisis al enviar (`scanOnPush: false`) ni reglas |
 | Política de ciclo de vida | Conserva las últimas 10 imágenes |
 | Imagen usada en el despliegue manual | `f224bef`, `sha256:8c217021f564a49fe178ce79257f97776bb64c581919b57b1dcd4fb476ddb644`, 60,43 MB, enviada el 5 de noviembre de 2026 a las 22:09:34 |
-| Imagen vigente de `latest` | `168dd91`, enviada por el pipeline el 8 de noviembre |
+| Imagen de `latest` al cierre de la sección 3 | `168dd91`, enviada por el pipeline el 8 de noviembre |
 
 El repositorio es privado y usa etiquetas mutables porque `latest` se mueve en cada envío; con
 etiquetas inmutables el segundo envío fallaría. La política de ciclo de vida conserva las últimas 10
@@ -342,9 +343,10 @@ conserve el entorno de Beanstalk de la Entrega 2, desde `blacklist-app-sg` (`sg-
 esa regla sigue en `blacklist-db-sg` aunque hoy ninguna instancia la use. Las tres subredes son
 públicas y la tarea tiene IP pública, porque no hay NAT gateway ni *endpoints* de VPC, que cobran por
 hora en el plan gratuito. En el despliegue manual, el *listener* de producción reenvía al grupo azul;
-el verde queda libre para que CodeDeploy registre la versión nueva y cambie el tráfico. La salud se
-comprueba en `/ping` con código 200, cada 15 s, con 5 s de espera y dos comprobaciones para sano y dos
-para no sano; la anulación de registro es de 30 s. Ninguna de las pantallas de las capturas mostró el
+el verde queda libre para que la acción *Deploy* registre la versión nueva y CodeDeploy cambie el
+tráfico. La salud se comprueba en `/ping` con código 200, cada 15 s, con 5 s de espera y dos
+comprobaciones para sano y dos para no sano; la anulación de registro es de 30 s. Ninguna de las
+pantallas de las capturas mostró el
 aviso de características avanzadas.
 
 ![Figura 3.6. Balanceador blacklist-devops-alb activo en us-east-2](capturas/entrega-3/1.9-alb-activo.png)
@@ -449,8 +451,8 @@ servicio a cero con `aws ecs update-service ... --desired-count 0`; el balancead
 aunque no haya tareas, así que los recursos solo se encienden mientras se trabaja y se graba.
 
 El despliegue manual es la base que el pipeline reproduce: la misma familia de definición y el mismo
-servicio, con la diferencia de que CodeDeploy registra una revisión nueva con la imagen del commit y
-mueve el tráfico sin intervención. Las secciones 5 a 7 documentan esas ejecuciones.
+servicio, con la diferencia de que la acción *Deploy* registra una revisión nueva con la imagen del
+commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 5 a 7 documentan esas ejecuciones.
 
 ## 4. Archivos de configuración y pipeline
 
@@ -478,11 +480,11 @@ se documenta en la sección 4; esta sección se centra en la ejecución.
 |---|---|
 | Commit | `db6e99013812c059c32fe62e50e1cfcc8f7d21ee` (`db6e990`), *merge commit* del PR #250 en `main`, 17:59:35 |
 | Disparador | `WebhookV2`, tipo `PUSH_BRANCH`, rama `main`, 3 s después del *merge* |
-| Ejecución | `31b06edb-3f43-44e3-ac71-9af3f42c7f24`, versión 5 del pipeline, **Succeeded** |
+| Ejecución | `31b06edb-3f43-44e3-ac71-9af3f42c7f24`, versión 5 del pipeline, *Succeeded* |
 | Duración | 8 min 19 s; inicio 17:59:38 y fin 18:07:58, según el resumen de la ejecución |
-| Build | `blacklist-devops-ci-build:ba2e2bd9-e129-49d4-9136-b8cb65caae8c` (compilación 28), **Succeeded**: 156 pruebas aprobadas, cobertura del 100 % |
+| Build | `blacklist-devops-ci-build:ba2e2bd9-e129-49d4-9136-b8cb65caae8c` (compilación 28), *Succeeded*: 156 pruebas aprobadas, cobertura del 100 % |
 | Imagen | `blacklist-devops:db6e990` y `latest`, el mismo *digest* `sha256:18b1b9cd0ba427568434fb47ef6fdd6153dba4579bfe0a4aa852f6c76973e04f`, 60,43 MB |
-| Despliegue | `d-UKCBNTBGL`, aplicación `blacklist-devops-app`, grupo `blacklist-devops-dg`, `CodeDeployDefault.ECSAllAtOnce`, **Succeeded**, sin reversión |
+| Despliegue | `d-UKCBNTBGL`, aplicación `blacklist-devops-app`, grupo `blacklist-devops-dg`, `CodeDeployDefault.ECSAllAtOnce`, *Succeeded*, sin reversión |
 | Definición | `blacklist-devops-task:4`, registrada por la acción *Deploy* (`CodeDeployToECS`) del pipeline con `taskdef.json`; conserva 256/512 y los secretos por referencia |
 | Tráfico | El *listener* HTTP:80 pasó de `blacklist-devops-tg-verde` (revisión 3, `168dd91`) a `blacklist-devops-tg-azul` (revisión 4, `db6e990`) |
 | Servicio | `blacklist-devops-task:4`, 1 tarea en ejecución |
@@ -521,9 +523,9 @@ enviado a `main` con el mensaje de la promoción.
 
 ![Figura 6.1. Ejecución 31b06edb del pipeline con las tres etapas en verde y el commit db6e990 de la promoción como desencadenador](capturas/entrega-3/2.3-pipeline-ejecucion.png)
 
-Línea temporal: *Source* 5 s, *Build* 3 min 35 s y *Deploy* 4 min 37 s.
+Línea temporal: *Source* 5 s, etapa *Build* 3 min 35 s y *Deploy* 4 min 37 s.
 
-![Figura 6.2. Línea temporal de la ejecución: Source 5 s, Build 3 min 35 s y Deploy 4 min 37 s](capturas/entrega-3/2.3-pipeline-linea-temporal.png)
+![Figura 6.2. Línea temporal de la ejecución: Source 5 s, etapa Build 3 min 35 s y Deploy 4 min 37 s](capturas/entrega-3/2.3-pipeline-linea-temporal.png)
 
 Fases del build, todas en *Realizado correctamente*. La versión de origen resuelta es `db6e990` y el
 iniciador es `codepipeline/blacklist-devops-ci-pipeline`.
