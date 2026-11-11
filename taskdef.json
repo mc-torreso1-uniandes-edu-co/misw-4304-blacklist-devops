@@ -12,6 +12,18 @@
         }
       ],
       "essential": true,
+      "healthCheck": {
+        "command": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ping', timeout=3)"
+        ],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 20
+      },
       "environment": [
         {
           "name": "APP_ENV",
