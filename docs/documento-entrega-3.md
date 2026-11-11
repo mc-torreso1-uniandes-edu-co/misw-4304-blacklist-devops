@@ -784,7 +784,210 @@ en las secciones 5 y 7.
 
 ## 7. CI exitoso y CD fallido, con reversión
 
-[PENDIENTE: tarea 3.6 (#216).]
+La sección 6 cerró con la revisión 4 de `blacklist-devops-task` (`db6e990`) atendiendo en el grupo de
+destino azul. Esta sección documenta la ejecución en la que la integración continua terminó bien y el
+despliegue continuo falló: el contenedor de la versión nueva escucha en el puerto `8001`, mientras la
+definición de la tarea, el `appspec.yaml` y los grupos de destino esperan el `8000` (decisión 5 de la
+1.2). Es el punto 3 del documento del enunciado (8 %): un CI exitoso seguido de un CD fallido, con
+hallazgos y capturas de los servicios de AWS.
+
+La ejecución es del **10 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
+Las horas están en UTC-05:00. No se creó infraestructura nueva. El cambio llegó a `dev` con el PR
+#258 y a `main` con la promoción #261, que además retiró la prueba que fallaba a propósito en la
+sección 5. El detalle completo, con los dos CSV del monitor de `/ping`, está en
+`docs/ci/entrega-3/2.5-cd-fallido.md`.
+
+La ejecución **no salió como se había previsto**. CodeDeploy falló y revirtió solo, como se buscaba,
+pero la configuración canaria no verificó la salud de la versión nueva antes de pasarle tráfico: el
+10 % de las solicitudes recibió errores 502 durante cinco minutos y, al pasar el resto, hubo unos 44 s
+sin servicio hasta la reversión. Los hallazgos 2 a 9 explican por qué y qué se corrigió.
+
+### 7.1 Configuración de CodeDeploy antes de la ejecución
+
+El grupo `blacklist-devops-dg` se creó con `CodeDeployDefault.ECSAllAtOnce` (decisión 2 de la 1.2).
+El hallazgo 4 de la sección 6 mostró que, sin *listener* de prueba, esa configuración no verifica la
+salud de la versión nueva antes de pasarle el tráfico. Por eso, el 9 de noviembre a las 23:56, el
+equipo cambió el grupo a `CodeDeployDefault.ECSCanary10Percent5Minutes`, que pasa el 10 % del tráfico
+durante 5 minutos y después el resto, con el supuesto de que la salud se verificaría antes de mover el
+tráfico. El rol de CodePipeline recibió el permiso de leer esa configuración. La reversión automática
+ante `DEPLOYMENT_FAILURE` no cambió.
+
+| Aspecto | Antes (1.15) | Desde el 9 de noviembre |
+|---|---|---|
+| Paso del tráfico | `CodeDeployDefault.ECSAllAtOnce`: el 100 % de una vez | `CodeDeployDefault.ECSCanary10Percent5Minutes`: 10 % durante 5 minutos y después el resto |
+| Reversión | Automática ante `DEPLOYMENT_FAILURE` | Sin cambios |
+| *Listener* de prueba | No | No |
+| Permiso del rol de CodePipeline (`acceso-minimo-cd`) | `GetDeploymentConfig` sobre `ECSAllAtOnce` | Sobre las dos configuraciones |
+
+![Figura 7.1. Grupo de despliegue blacklist-devops-dg antes del cambio, con CodeDeployDefault.ECSAllAtOnce y la restauración habilitada](capturas/entrega-3/2.5-grupo-despliegue-antes.png)
+
+![Figura 7.2. El mismo grupo después del cambio, con CodeDeployDefault.ECSCanary10Percent5Minutes](capturas/entrega-3/2.5-grupo-despliegue-despues.png)
+
+### 7.2 Resultado de la ejecución
+
+| Dato | Valor |
+|---|---|
+| Cambio | PR #258: Gunicorn en `:8001` en el `Dockerfile` y retiro de la prueba de la sección 5 |
+| Commit | `69e12b85c0671d077e92f040bcb6234e1c7d343c` (`69e12b8`), *merge commit* de la promoción #261 en `main`, 22:34:51 |
+| Disparador | `WebhookV2`, tipo `PUSH_BRANCH`, rama `main`, 3 s después del *merge* |
+| Ejecución | `035b42d2-3559-499c-8459-ad447b344612`, versión 5 del pipeline, **Failed** |
+| Duración | 11 min 59 s; inicio 22:34:54 y fin 22:46:53 |
+| Etapas *Source* y *Build* | *Succeeded*. Build `blacklist-devops-ci-build:463203d6-81e2-45d4-9b03-4d950c518784` (compilación 30): 156 pruebas aprobadas, cobertura del 100 % |
+| Imagen | `blacklist-devops:69e12b8` y `latest`, el mismo *digest* `sha256:603c0321a20d3b0e814e605970d189a5c9636a7e28809f05a0eb28ad01b81bfa`, 60,43 MB, en ECR a las 22:38:50 |
+| Definición | `blacklist-devops-task:5`, registrada por la acción *Deploy* a las 22:39:10 con la imagen `69e12b8` |
+| Despliegue | `d-SYHBSF3HL`, `CodeDeployDefault.ECSCanary10Percent5Minutes`, **Failed** a las 22:46:40: `ECS_UPDATE_ERROR`, «CodeDeploy detected that the replacement task set is unhealthy.» |
+| Reversión | `d-2TNRGN3HL`, iniciada por CodeDeploy, **Succeeded** de 22:46:41 a 22:46:43 |
+| Servicio después | `blacklist-devops-task:4`, la misma tarea de la sección 6; el *listener* HTTP:80 reenvía de nuevo a `blacklist-devops-tg-azul` |
+| `GET /ping` | Cuando respondió, siempre `{"version": "db6e990"}`. **40 de 361 consultas con 502** mientras corrió la ejecución (monitor principal) |
+| Errores 502 en el balanceador | **77** entre las 22:41 y las 22:46 (CloudWatch, `HTTPCode_ELB_502_Count`) |
+
+### 7.3 Línea de tiempo y disponibilidad
+
+| Hora | Evento |
+|---|---|
+| 22:26:56 | Empieza el monitor principal de `/ping`, una consulta cada 2 s; a las 22:32:40, el de respaldo |
+| 22:34:51 | Se fusiona la promoción #261 en `main` (*merge commit* `69e12b8`) |
+| 22:34:54 | Inicia la ejecución `035b42d2`, 3 s después del *push* |
+| 22:35:03 – 22:38:51 | *Build*: `INSTALL` 191 s, pruebas (`156 passed`), `docker build` y envío de `69e12b8` y `latest` |
+| 22:39:10 | Inicia *Deploy*: se registra `blacklist-devops-task:5` y se crea `d-SYHBSF3HL` |
+| 22:39:13 – 22:40:55 | `Install`: ECS arranca la tarea nueva (22:39:22), la registra en `blacklist-devops-tg-verde` (22:39:41) y da el conjunto por estable a las 22:39:50, **9 s después del registro** |
+| 22:40:56 | `AllowTraffic`: el 10 % del tráfico pasa a `blacklist-devops-tg-verde` |
+| 22:41:32 | Primer 502 en el monitor principal |
+| 22:41:38, 22:43:54 y 22:46:14 | ECS reemplaza la tarea nueva: «Amazon ECS replaced 1 tasks due to an unhealthy status» |
+| 22:42:17 y 22:44:31 | ECS: «port 8000 is unhealthy in target-group blacklist-devops-tg-verde due to (reason Health checks failed)» |
+| 22:45:57 | Terminan los 5 minutos del canario: el 100 % del tráfico pasa a `blacklist-devops-tg-verde` |
+| 22:46:10 – 22:46:53 | Corte total: todas las consultas a `/ping` responden 502 |
+| 22:46:40 | `d-SYHBSF3HL` termina en *Failed*, 43 s después de pasar el 100 % |
+| 22:46:41 – 22:46:43 | La reversión `d-2TNRGN3HL` devuelve el tráfico al conjunto original en `blacklist-devops-tg-azul` |
+| 22:46:53 | La etapa *Deploy* y la ejecución terminan en *Failed* |
+| 22:48:16 | ECS: el servicio vuelve al estado estable |
+
+| Fuente | Consultas | 200 con `db6e990` | 502 sueltos (10 %) | 502 seguidos (100 %) |
+|---|---|---|---|---|
+| Monitor principal, 22:26:56 – 22:47:40 | 531 | 491 | 18, de 22:41:32 a 22:46:02 | 22, de 22:46:10 a 22:46:52 |
+| Monitor de respaldo, 22:32:40 – 23:05:32 | 986 | 950 | 14, de 22:41:44 a 22:45:53 | 22, de 22:46:11 a 22:46:53 |
+| CloudWatch del balanceador, 22:41 – 22:46 | — | — | 4, 9, 5, 6 y 8 por minuto | 45 en el minuto de las 22:46 |
+
+Cuando `/ping` respondió, siempre lo hizo con `db6e990`: la versión nueva nunca contestó. Ningún
+monitor registró errores después de las 22:46:53.
+
+### 7.4 Pipeline y build
+
+La ejecución con *Source* y *Build* en verde y *Deploy* en rojo. El desencadenador es el commit
+`69e12b8` enviado a `main` con el mensaje de la promoción.
+
+![Figura 7.3. Ejecución 035b42d2 del pipeline: Source y Build en verde, Deploy en rojo, 11 min 59 s; el desencadenador es el commit 69e12b8 de la promoción](capturas/entrega-3/2.5-pipeline-ejecucion.png)
+
+Registro del build 30: cobertura del 100 % y `156 passed`, seguido de las validaciones y el inicio de
+sesión en ECR.
+
+![Figura 7.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 % y el inicio de sesión en ECR](capturas/entrega-3/2.5-build-pruebas.png)
+
+Envío a ECR: `latest` con el mismo *digest* que `69e12b8` y el artefacto con `imageDetail.json`,
+`taskdef.json` y `appspec.yaml`.
+
+![Figura 7.5. Fin del registro del build: envío de la imagen a ECR y artefacto con los tres archivos](capturas/entrega-3/2.5-build-envio-ecr.png)
+
+![Figura 7.6. Repositorio blacklist-devops en ECR: la imagen 69e12b8, latest de las 22:38:50](capturas/entrega-3/2.5-ecr-imagen.png)
+
+### 7.5 Despliegue fallido y reversión
+
+`d-SYHBSF3HL` en *Error*, con la causa y la reversión `d-2TNRGN3HL` realizada correctamente.
+
+![Figura 7.7. Despliegue d-SYHBSF3HL en Error: CodeDeploy detected that the replacement task set is unhealthy, con la reversión d-2TNRGN3HL realizada](capturas/entrega-3/2.5-codedeploy-fallido.png)
+
+Estado del despliegue: el 100 % del tráfico se desvió al conjunto de sustitución y el paso de espera
+terminó en *Error*. La consola muestra el último estado del despliegue fallido, no lo que quedó
+corriendo, que es el conjunto original (hallazgo 8).
+
+![Figura 7.8. Pasos del despliegue fallido: el tráfico desviado al conjunto de sustitución y la espera en Error](capturas/entrega-3/2.5-codedeploy-pasos.png)
+
+Eventos del ciclo de vida: `Install` duró 1 min 42 s y `AllowTraffic`, exactamente los 5 minutos del
+canario. Ninguno falló: el despliegue falló después, en la espera.
+
+![Figura 7.9. Ciclo de vida de d-SYHBSF3HL: Install y AllowTraffic correctos; AllowTraffic de 22:40 a 22:45](capturas/entrega-3/2.5-codedeploy-ciclo-vida.png)
+
+La reversión `d-2TNRGN3HL`, iniciada por CodeDeploy: el 100 % del tráfico vuelve al conjunto
+original y se termina el de sustitución.
+
+![Figura 7.10. Reversión automática d-2TNRGN3HL: el tráfico vuelve al conjunto original y se termina el de sustitución](capturas/entrega-3/2.5-codedeploy-reversion.png)
+
+### 7.6 Tareas en mal estado y tráfico
+
+Eventos del servicio filtrados por *unhealthy*: el puerto 8000 de la tarea nueva no pasa la
+verificación de salud en `blacklist-devops-tg-verde` y ECS reemplaza la tarea tres veces. El grupo
+verde en mal estado ya no se podía capturar cuando terminó la ejecución; estos eventos son la
+evidencia.
+
+![Figura 7.11. Eventos de blacklist-devops-service: la tarea nueva unhealthy en blacklist-devops-tg-verde y reemplazada tres veces](capturas/entrega-3/2.5-ecs-eventos-unhealthy.png)
+
+CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC):
+`HTTPCode_ELB_502_Count` sube desde las 22:41 y llega a 45 en el minuto de las 22:46;
+`RequestCount` se mantiene en unas 60 por minuto, las de los dos monitores.
+
+![Figura 7.12. CloudWatch del balanceador: errores 502 desde las 22:41 hasta 45 en el minuto de las 22:46, y solicitudes por minuto](capturas/entrega-3/2.5-cloudwatch-502.png)
+
+*Listener* HTTP:80 después de la reversión: reenvía el 100 % a `blacklist-devops-tg-azul`.
+
+![Figura 7.13. Listener HTTP:80 del balanceador después de la reversión, reenviando a blacklist-devops-tg-azul](capturas/entrega-3/2.5-alb-listener.png)
+
+### 7.7 Hallazgos
+
+1. **El CI terminó bien y el CD falló, como se buscaba.** Las 156 pruebas pasaron, la imagen
+   `69e12b8` llegó a ECR y la etapa *Deploy* registró `blacklist-devops-task:5`. El contenedor
+   arrancó, pero no atiende el puerto 8000, así que la versión nueva nunca respondió.
+2. **El canario no verificó la salud antes de pasar el tráfico.** ECS dio por estable el conjunto de
+   sustitución 9 s después de registrar la tarea en `blacklist-devops-tg-verde`, igual que en la
+   sección 6. Mientras ese grupo no recibe tráfico, sus destinos quedan sin usar (`Target.NotInUse`)
+   y el balanceador no los revisa. `Install` terminó bien y el canario pasó el 10 % a una versión que
+   no respondía. El cambio de configuración (7.1) suponía que las verificaciones correrían durante
+   `Install`; esta ejecución lo desmintió para nuestra configuración, sin *listener* de prueba.
+3. **Con el 10 % del tráfico, parte de las solicitudes falló durante cinco minutos.** Desde las
+   22:40:56 el balanceador envió una de cada diez solicitudes al grupo verde. La tarea nueva quedó en
+   mal estado y ECS la reemplazó cada dos minutos, sin que ninguna llegara a sana. Los dos monitores
+   registraron 32 errores 502 sueltos entre las 22:41:32 y las 22:46:02.
+4. **CodeDeploy no detuvo el canario: pasó el 100 % al terminar los cinco minutos.** `AllowTraffic`
+   terminó en *Succeeded* a las 22:45:57 y el tráfico completo fue al grupo verde. Desde las 22:46:10
+   todas las consultas respondieron 502.
+5. **CodeDeploy detectó la falla con el tráfico completo y revirtió solo.** A las 22:46:40, 43 s
+   después de pasar el 100 %, declaró fallido el despliegue con `ECS_UPDATE_ERROR` y la reversión
+   automática `d-2TNRGN3HL` devolvió el tráfico al grupo azul en 2 s. La reversión fue posible porque
+   la versión anterior seguía corriendo: el conjunto original solo se termina dos minutos después de
+   un despliegue exitoso. La tarea que atiende desde la sección 6 nunca se detuvo.
+6. **Hubo errores y un corte breve.** El monitor principal registró 40 errores en las 361 consultas
+   hechas mientras corrió la ejecución (11 %); el de respaldo, 36; CloudWatch, 77 en total. El corte
+   total duró unos 44 s, de las 22:46:10 a las 22:46:53.
+7. **El fallo se declaró en 7 min 30 s, no en 60.** CodeDeploy espera hasta 60 minutos a que el
+   conjunto de sustitución quede sano antes de mover el tráfico. Como ECS lo dio por estable sin
+   verificar la salud, ese límite no aplicó: lo que detuvo el despliegue fue el estado del conjunto
+   con tráfico real. La ejecución completa duró 11 min 59 s.
+8. **La consola del despliegue fallido puede confundir.** Después de la reversión, la página de
+   `d-SYHBSF3HL` muestra el conjunto de sustitución como `PRIMARY` con el 100 %. Es el estado en que
+   quedó ese despliegue; lo que corre se ve en la reversión, en el *listener* y en el servicio, que
+   solo tiene el conjunto original con `blacklist-devops-task:4`.
+9. **Causa y corrección: faltaba una verificación de salud del contenedor.** ECS solo sabía que la
+   tarea estaba sana por el balanceador, y el balanceador no la revisa hasta que recibe tráfico. El
+   equipo votó agregar una verificación de salud del contenedor en `taskdef.json` (`healthCheck`
+   contra `/ping` en `localhost:8000`) en la ejecución que devuelve el puerto a `8000` (2.6, #210),
+   para que ECS no dé por estable una tarea que no responde.
+   [PENDIENTE: resultado de la 2.6 en los eventos de ECS.] Otras salidas son un *listener* de prueba o la reversión por alarmas de
+   CloudWatch, que la decisión 3 de la 1.2 dejó para la Entrega 4.
+
+### 7.8 Cumplimiento del punto 3 del documento
+
+| Requisito del punto 3 (8 %) | Evidencia |
+|---|---|
+| Ejecución con CI exitoso: commit, build, pruebas e imagen en ECR | Secciones 7.2 a 7.4; figuras 7.3 a 7.6 |
+| CD fallido: causa y mensaje del fallo | Secciones 7.2, 7.5 y 7.6; figuras 7.7 a 7.11; hallazgos 1, 2 y 9 |
+| Reversión automática a la versión anterior | Sección 7.5; figuras 7.10 y 7.13; hallazgo 5 |
+| Disponibilidad durante el despliegue | Sección 7.3 y figura 7.12; hallazgos 3, 4 y 6 |
+| Hallazgos y capturas de los servicios de AWS | Secciones 7.1 a 7.7; trece figuras y nueve hallazgos |
+
+Con esta ejecución, el punto 3 del documento queda cubierto: el commit disparó el CI, el build
+ejecutó las 156 pruebas y publicó la imagen, y el despliegue de CodeDeploy falló y se revirtió solo a
+la versión anterior. La ejecución también mostró que la configuración canaria, sin una verificación
+de salud del contenedor, no evita que la versión nueva reciba tráfico: hubo errores durante cinco
+minutos y unos 44 s sin servicio, y la corrección se aplicó en la 2.6 (#210).
 
 ## 8. Enlaces, decisiones y conclusiones
 
