@@ -656,7 +656,7 @@ archivo ni en las capturas.
 | 17:59:44 – 18:03:19 | *Build*: instala Python 3.13.16, ejecuta las pruebas, construye la imagen y la envía a ECR |
 | 18:03:11 | La imagen `db6e990` llega a ECR |
 | 18:03:20 | Inicia *Deploy*; a las 18:03:21 se registra `blacklist-devops-task:4` y se crea `d-UKCBNTBGL` |
-| 18:03:23 – 18:05:26 | `Install`: el conjunto de tareas de sustitución arranca y pasa la verificación de salud en `blacklist-devops-tg-azul` |
+| 18:03:23 – 18:05:26 | `Install`: el conjunto de tareas de sustitución arranca, se registra en `blacklist-devops-tg-azul` a las 18:03:56 y ECS lo da por estable a las 18:04:05 |
 | 18:05:27 | `AllowTraffic`: el *listener* de producción pasa al grupo azul (100 % del tráfico) |
 | 18:05:28 – 18:07:29 | Espera de 2 minutos y terminación del conjunto de tareas original |
 | 18:07:29 | `d-UKCBNTBGL` termina en *Succeeded* |
@@ -715,7 +715,8 @@ tabla.
 ![Figura 6.8. Listener HTTP:80 del balanceador blacklist-devops-alb reenviando al grupo de destino azul](capturas/entrega-3/2.3-alb-listener.png)
 
 La verificación de salud del grupo de destino consulta `/ping` cada 15 s, con 5 s de espera, dos
-comprobaciones para sano y dos para no sano; la tarea nueva pasó antes del cambio de tráfico.
+comprobaciones para sano y dos para no sano. Con `ECSAllAtOnce` y sin *listener* de prueba, el grupo
+de sustitución no recibe esas verificaciones hasta el cambio de tráfico (hallazgo 4).
 `GET /ping` no requiere
 token y no consulta la base, así que la versión se comprueba sin depender de la RDS:
 
@@ -743,10 +744,17 @@ documentan en la sección 7.
 3. **La versión desplegada es trazable al commit.** La etiqueta de la imagen, la definición
    `blacklist-devops-task:4` y `/ping` dicen `db6e990`, que es el commit del *push*. `latest` apunta
    al mismo *digest*.
-4. **No hubo corte de servicio.** El conjunto de tareas nuevo arrancó y pasó la verificación de salud
-   en el grupo azul antes de recibir tráfico. El cambio del *listener* fue a las 18:05:27 y ninguna
-   consulta a `/ping` falló. El conjunto anterior siguió dos minutos más en el grupo verde, disponible
-   para revertir, antes de terminarse.
+4. **No hubo corte de servicio, pero la versión nueva no se verificó antes de recibir tráfico.** ECS
+   registró la tarea nueva en el grupo azul a las 18:03:56 y la dio por estable 9 s después, antes de
+   que el balanceador pudiera completar dos verificaciones de salud de 15 s. Con
+   `CodeDeployDefault.ECSAllAtOnce` y sin *listener* de prueba, el grupo de sustitución no está
+   asociado al balanceador y sus destinos no se verifican hasta que reciben el tráfico; AWS lo
+   documenta en la guía de solución de problemas de CodeDeploy para ECS. El cambio del *listener* fue
+   a las 18:05:27 y ninguna consulta a `/ping` falló porque la versión nueva estaba bien. El conjunto
+   anterior siguió dos minutos más en el grupo verde antes de terminarse. Por esta limitación, desde
+   la prueba del CD fallido (sección 7) el grupo de despliegue usa
+   `CodeDeployDefault.ECSCanary10Percent5Minutes`, que verifica la salud del grupo de sustitución
+   antes de mover el tráfico (votación del equipo del 10 de noviembre).
 5. **Los grupos de destino se alternan.** El despliegue de la 1.16 dejó el tráfico en el grupo verde;
    este lo pasó al azul. El siguiente despliegue usará el verde.
 6. **La instalación de Python ocupa casi todo el build.** `INSTALL` tardó 172 s, porque `pyenv`
