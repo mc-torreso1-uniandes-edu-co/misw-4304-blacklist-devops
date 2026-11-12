@@ -152,7 +152,7 @@ ALB blacklist-devops-alb (puerto 80) ──▶ tareas ──▶ RDS PostgreSQL b
 | Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (existe, cambia en la 1.16) | Orquestará las tres etapas: Origen, Construcción y Despliegue. Con cada commit en `main` correrán las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecutará nada en AWS (decisión 4 de la 1.1) |
 | Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (existe, cambia en la 1.14) | Ejecutará el `buildspec.yml` con modo privilegiado: instalará las dependencias, correrá las pruebas y, si pasan, construirá la imagen y la enviará a ECR. Si una prueba falla, el build terminará en *Failed* y no habrá imagen ni despliegue |
 | Imagen | Amazon ECR privado, `blacklist-devops` (propuesta, 1.7) | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
-| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (propuesta, 1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde y el *listener* de producción del balanceador. Configuración `CodeDeployDefault.ECSAllAtOnce`; reversión automática si el despliegue falla, sin alarmas de CloudWatch |
+| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (propuesta, 1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde y el *listener* de producción del balanceador. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte (sección 7). Sin alarmas de CloudWatch |
 | Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` (propuesta, 1.10 y 1.11) | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000 |
 | Red | VPC por defecto con subredes públicas; ALB `blacklist-devops-alb` con dos grupos de destino tipo IP (propuesta, 1.9) | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
 | Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` (propuesta, 1.8) | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
@@ -180,9 +180,9 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
    terminan en *Failed*: no hay imagen nueva y CodeDeploy no se ejecuta.
 5. La etapa Despliegue entrega `imageDetail.json`, `appspec.yaml` y `taskdef.json` a CodeDeploy.
 6. La acción *Deploy* del pipeline registra una revisión de `blacklist-devops-task` con la imagen
-   nueva; CodeDeploy levanta la versión verde y traslada el tráfico del grupo azul al verde cuando la
-   verificación de salud en `/ping` responde 200. Si la versión nueva no pasa la salud, revierte a la
-   versión anterior.
+   nueva; CodeDeploy levanta la versión nueva en el otro grupo de destino y traslada el tráfico con
+   `CodeDeployDefault.ECSCanary10Percent5Minutes`: primero el 10 % durante 5 minutos y después el resto. Si la
+   versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte a la versión anterior.
 7. `/ping` responde la etiqueta del commit desplegado, así que la versión que atiende se comprueba
    con una solicitud sin token.
 
