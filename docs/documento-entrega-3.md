@@ -69,13 +69,15 @@ usuario sin privilegios (`appuser`, UID 10001) y recibe la etiqueta de la versi�
 ### 1.1 Pruebas por endpoint
 
 Son las mismas pruebas que ejecuta el CI antes de construir la imagen: validan el contrato y, en el
-pipeline, deciden si se construye y se despliega. La suite tiene 156 pruebas. Por archivo
+pipeline, deciden si se construye y se despliega. La suite tiene 171 pruebas. Por archivo
 (`pytest --collect-only -q` en `dev`): `test_ambiente_aws` 34, `test_app_creation` 1,
 `test_authentication` 10, `test_blacklist_api` 23, `test_configuration` 16, `test_domain` 1,
-`test_empaquetar` 15, `test_generar_pdf` 25, `test_monitor_disponibilidad` 25 y `test_ping` 6. Las
+`test_empaquetar` 15, `test_generar_pdf` 40, `test_monitor_disponibilidad` 25 y `test_ping` 6. Las
 de la API son 39 (23 en `tests/test_blacklist_api.py`, 10 casos de credencial inválida en
-`tests/test_authentication.py` y 6 en `tests/test_ping.py`); las otras 117 cubren la configuración,
-el dominio y los scripts del equipo.
+`tests/test_authentication.py` y 6 en `tests/test_ping.py`); las otras 132 cubren la configuración,
+el dominio y los scripts del equipo. Las ejecuciones de las secciones 6 a 8 corrieron con 156: las
+15 restantes son del generador del PDF de este documento y se agregaron el 13 de noviembre, después
+de esas ejecuciones; no cambian la aplicación.
 
 | Endpoint | Respuesta | Escenario | Prueba representativa |
 |---|---|---|---|
@@ -176,7 +178,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 1. Un desarrollador fusiona un cambio en `main` (el *merge* del PR `dev` → `main`).
 2. CodePipeline recibe el evento por la conexión de GitHub y la etapa Origen obtiene el código de ese
    commit.
-3. La etapa Construcción lanza CodeBuild, que instala las dependencias y ejecuta las 156 pruebas.
+3. La etapa Construcción lanza CodeBuild, que instala las dependencias y ejecuta todas las pruebas.
 4. Si todas pasan, CodeBuild construye la imagen con la etiqueta del commit, la envía a ECR con las
    etiquetas `<commit>` y `latest`, y escribe `imageDetail.json`. Si una falla, el build y la ejecución
    terminan en *Failed*: no hay imagen nueva y CodeDeploy no se ejecuta.
@@ -489,7 +491,278 @@ commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 6 a 8 doc
 
 ## 5. Archivos de configuración y pipeline
 
-[PENDIENTE: archivos de configuración y pipeline.]
+Cubre el 60 % del enunciado, los tres puntos de la configuración del pipeline: los archivos de
+configuración con las pruebas unitarias en la construcción (punto 1, 10 %), el build automático con la
+imagen del contenedor en cada commit en `main` (punto 2, 10 %) y el despliegue continuo automático en
+Fargate después de un CI exitoso (punto 3, 40 %). Esta sección muestra la configuración; las secciones
+6 a 8 muestran las ejecuciones que la ponen a prueba.
+
+El pipeline es el de la Entrega 2, `blacklist-devops-ci-pipeline`, ampliado: el proyecto de CodeBuild
+ahora construye y envía la imagen, y una etapa nueva, *Deploy*, despliega con CodeDeploy. CodeBuild,
+CodeDeploy y CodePipeline quedaron configurados el 8 de noviembre de 2026, en la cuenta `253041091381`
+y la región `us-east-2`: el proyecto de CodeBuild y el pipeline de la Entrega 2 se modificaron, y la
+aplicación y el grupo de CodeDeploy se crearon ese día.
+
+### 5.1 Archivos de configuración en el repositorio
+
+Los cuatro archivos están en la raíz del repositorio, en `main`, y cambian por pull request como el
+resto del código:
+
+| Archivo | Lo usa | Qué hace |
+|---|---|---|
+| `Dockerfile` | CodeBuild (`docker build`) | Construye la imagen sobre `python:3.13.16-slim`: instala `requirements.txt`, copia la aplicación, escribe la etiqueta de la versión en `VERSION` y arranca Gunicorn en el puerto 8000 con un usuario sin privilegios |
+| `buildspec.yml` | CodeBuild | Ejecuta las pruebas unitarias, construye la imagen, la envía a ECR y entrega a la etapa *Deploy* los tres archivos que necesita |
+| `taskdef.json` | Acción *Deploy* del pipeline | Plantilla de la definición de la tarea de Fargate, con el marcador `<IMAGE1_NAME>` en lugar de la imagen |
+| `appspec.yaml` | CodeDeploy | Indica qué servicio se despliega y qué contenedor y puerto reciben el tráfico, con el marcador `<TASK_DEFINITION>` |
+
+Ningún archivo contiene secretos: la definición de la tarea referencia los parámetros de Parameter
+Store por su ARN, y el ID de la cuenta, que no es un secreto, llega a CodeBuild como variable de
+entorno del proyecto.
+
+### 5.2 `buildspec.yml`: pruebas, imagen y artefactos
+
+```yaml
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    APP_ENV: "testing"
+    ECR_REPOSITORY: "blacklist-devops"
+
+phases:
+  install:
+    runtime-versions:
+      python: "3.13"
+    commands:
+      - MAKE_OPTS="-j$(nproc)" pyenv install --skip-existing "$(cat .python-version)"
+      - python --version
+      - pip install -r requirements-dev.txt
+  build:
+    commands:
+      - python -m pytest -q --cov=app
+      - ': "${COMMIT_ID:?La variable COMMIT_ID no esta definida}"'
+      - ': "${AWS_ACCOUNT_ID:?La variable AWS_ACCOUNT_ID no esta definida}"'
+      - ': "${AWS_DEFAULT_REGION:?La variable AWS_DEFAULT_REGION no esta definida}"'
+      - ETIQUETA="${COMMIT_ID:0:7}"
+      - REGISTRO="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+      - IMAGEN="${REGISTRO}/${ECR_REPOSITORY}"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRO"
+      - docker build --platform linux/amd64 --provenance=false --sbom=false --build-arg VERSION="$ETIQUETA" -t "${IMAGEN}:${ETIQUETA}" -t "${IMAGEN}:latest" .
+  post_build:
+    commands:
+      - |
+        set -e
+        if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then
+          docker push "${IMAGEN}:${ETIQUETA}"
+          docker push "${IMAGEN}:latest"
+          printf '{"ImageURI":"%s"}\n' "${IMAGEN}:${ETIQUETA}" > imageDetail.json
+          cat imageDetail.json
+        fi
+
+artifacts:
+  files:
+    - imageDetail.json
+    - taskdef.json
+    - appspec.yaml
+  discard-paths: yes
+```
+
+Qué hace cada fase:
+
+| Fase | Comandos | Por qué |
+|---|---|---|
+| `install` | Instala Python 3.13.16 (la versión de `.python-version`) y las dependencias de desarrollo | Las pruebas corren con la misma versión de Python que la imagen |
+| `build`, pruebas | `python -m pytest -q --cov=app` es el **primer** comando | Con `APP_ENV=testing` las pruebas usan SQLite en memoria y no necesitan la RDS ni secretos. Si una falla, CodeBuild marca la fase en error y no ejecuta los comandos siguientes: no hay imagen ni despliegue (sección 6) |
+| `build`, validaciones | Comprueban que existan `COMMIT_ID`, `AWS_ACCOUNT_ID` y `AWS_DEFAULT_REGION` | Si falta una, el build falla con un mensaje claro en lugar de construir una imagen con una etiqueta vacía. `COMMIT_ID` lo entrega el pipeline, `AWS_ACCOUNT_ID` el proyecto y `AWS_DEFAULT_REGION` CodeBuild |
+| `build`, imagen | Inicio de sesión en ECR y `docker build` con dos etiquetas: los siete primeros caracteres del commit y `latest` | `--build-arg VERSION` escribe la etiqueta del commit en la imagen, así `/ping` responde qué versión atiende. `--provenance=false` y `--sbom=false` dejan una sola imagen, sin manifiestos adicionales |
+| `post_build` | Envía las dos etiquetas a ECR y escribe `imageDetail.json` con la dirección de la imagen | CodeBuild ejecuta `post_build` aunque `build` haya fallado; la condición `CODEBUILD_BUILD_SUCCEEDING = 1` impide enviar una imagen sin pruebas aprobadas |
+| `artifacts` | `imageDetail.json`, `taskdef.json` y `appspec.yaml` en la raíz del artefacto `BuildArtifact` | Son las tres entradas de la etapa *Deploy* (sección 5.6) |
+
+### 5.3 `taskdef.json` y `appspec.yaml`
+
+`taskdef.json` es la definición de la sección 4.3 convertida en plantilla. En cada despliegue, la
+acción *Deploy* del pipeline reemplaza `<IMAGE1_NAME>` por la dirección de `imageDetail.json` y
+registra una revisión nueva de `blacklist-devops-task`. Lo esencial del archivo:
+
+```json
+{
+  "family": "blacklist-devops-task",
+  "executionRoleArn": "arn:aws:iam::253041091381:role/blacklist-devops-ecs-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "containerDefinitions": [
+    {
+      "name": "blacklist-devops",
+      "image": "<IMAGE1_NAME>",
+      "portMappings": [{ "containerPort": 8000, "hostPort": 8000, "protocol": "tcp" }],
+      "essential": true,
+      "healthCheck": {
+        "command": ["CMD", "python", "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/ping', timeout=3)"],
+        "interval": 15, "timeout": 5, "retries": 3, "startPeriod": 20
+      },
+      "environment": [{ "name": "APP_ENV", "value": "production" }],
+      "secrets": [
+        { "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:ssm:us-east-2:253041091381:parameter/blacklist-devops/DATABASE_URL" },
+        { "name": "JWT_SECRET_KEY",
+          "valueFrom": "arn:aws:ssm:us-east-2:253041091381:parameter/blacklist-devops/JWT_SECRET_KEY" }
+      ],
+      "logConfiguration": { "logDriver": "awslogs", "options": {
+        "awslogs-group": "/ecs/blacklist-devops", "awslogs-region": "us-east-2", "awslogs-stream-prefix": "ecs" } }
+    }
+  ]
+}
+```
+
+- **Secretos por referencia.** `secrets` lleva el ARN de cada parámetro, no su valor. ECS los lee con el
+  rol de ejecución al arrancar la tarea y los entrega al contenedor como variables de entorno.
+- **Verificación de salud del contenedor (`healthCheck`).** Se agregó en la versión final del 12 de
+  noviembre, después del CD fallido (sección 8, hallazgo 9). Cada 15 s el contenedor consulta su propio
+  `/ping`; tras 3 intentos fallidos ECS lo da por no sano. Con ella, ECS solo da por estable una tarea
+  cuyo contenedor responde.
+- **El resto** (CPU, memoria, red, registros y rol de ejecución) es igual a la definición creada a mano
+  en la sección 4, así que el pipeline despliega lo mismo que se validó manualmente.
+
+`appspec.yaml` le dice a CodeDeploy qué desplegar:
+
+```yaml
+version: 0.0
+Resources:
+  - TargetService:
+      Type: AWS::ECS::Service
+      Properties:
+        TaskDefinition: <TASK_DEFINITION>
+        LoadBalancerInfo:
+          ContainerName: "blacklist-devops"
+          ContainerPort: 8000
+```
+
+La acción *Deploy* reemplaza `<TASK_DEFINITION>` por el ARN de la revisión que acaba de registrar.
+`ContainerName` y `ContainerPort` deben coincidir con `taskdef.json` y con los grupos de destino: son el
+contenedor y el puerto que el balanceador registra en el grupo de destino de la versión nueva.
+
+### 5.4 Proyecto de CodeBuild
+
+| Campo | Valor |
+|---|---|
+| Proyecto | `blacklist-devops-ci-build`, el de la Entrega 2 |
+| Origen y artefactos | AWS CodePipeline: el código llega de la etapa *Source* y el artefacto vuelve al pipeline |
+| Entorno | `aws/codebuild/amazonlinux-x86_64-standard:6.0`, contenedor Linux, 2 vCPU y 4 GiB |
+| Modo privilegiado | **Activado** (8 de noviembre, 01:54). Sin él, el contenedor de CodeBuild no puede ejecutar Docker y `docker build` falla |
+| Variable de entorno | `AWS_ACCOUNT_ID`, en texto plano: el ID de la cuenta no es un secreto |
+| Rol de servicio | `blacklist-devops-codebuild-role`, ampliado con permisos para iniciar sesión en ECR y enviar imágenes al repositorio `blacklist-devops` |
+| Archivo de construcción | `buildspec.yml` del repositorio (sección 5.2) |
+| Registros | Amazon CloudWatch Logs: el registro de cada build muestra las pruebas, la construcción y el envío de la imagen |
+
+![Figura 5.1. Proyecto blacklist-devops-ci-build después del cambio: origen AWS CodePipeline, rol blacklist-devops-codebuild-role, imagen amazonlinux-x86_64-standard:6.0, 2 vCPU y 4 GiB, y Privilegiado en Verdadero](capturas/entrega-3/1.14-codebuild-actualizado.png)
+
+### 5.5 Aplicación y grupo de despliegue de CodeDeploy
+
+| Campo | Valor |
+|---|---|
+| Aplicación | `blacklist-devops-app`, plataforma Amazon ECS |
+| Grupo de despliegue | `blacklist-devops-dg`, con el rol `blacklist-devops-codedeploy-role` |
+| Destino | Clúster `blacklist-devops-cluster` y servicio `blacklist-devops-service`, que usa el controlador de despliegue `CODE_DEPLOY` (sección 4.5) |
+| Tipo de despliegue | Azul/verde con control de tráfico |
+| Balanceador | Grupos de destino `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde`, y el *listener* de producción HTTP:80 de `blacklist-devops-alb`. Sin *listener* de prueba |
+| Paso del tráfico | `CodeDeployDefault.ECSCanary10Percent5Minutes`: el 10 % durante 5 minutos y después el resto. El grupo se creó con `CodeDeployDefault.ECSAllAtOnce` y se cambió el 9 de noviembre (sección 8.1, figuras 8.1 y 8.2) |
+| Paso del tráfico a la versión nueva | Sin aprobación manual: continúa en cuanto la versión nueva está lista (espera de 0 minutos) |
+| Versión anterior | Se termina 2 minutos después de un despliegue exitoso |
+| Reversión | Automática cuando el despliegue falla (`DEPLOYMENT_FAILURE`). Sin alarmas de CloudWatch |
+
+Azul y verde son papeles, no versiones: en cada despliegue CodeDeploy levanta la versión nueva en el
+grupo que no atiende el tráfico y, cuando termina, ese grupo pasa a ser el de producción. Por eso la
+sección 4 terminó con el tráfico en el grupo verde y la sección 7 lo devolvió al azul.
+
+![Figura 5.2. Grupo de despliegue blacklist-devops-dg: clúster y servicio de ECS, grupos de destino azul y verde, y el listener de producción del balanceador, sin listener de prueba](capturas/entrega-3/1.15-grupo-balanceador.png)
+
+### 5.6 Pipeline de CodePipeline
+
+| Etapa | Acción | Configuración |
+|---|---|---|
+| *Source* | GitHub (por la conexión `blacklist-devops-github`) | Repositorio `misw-4304-blacklist-devops`, rama `main`, formato `CODE_ZIP`. Entrega `SourceArtifact` y el identificador del commit |
+| *Build* | AWS CodeBuild | Proyecto `blacklist-devops-ci-build`, con la variable `COMMIT_ID` tomada del origen. Entrega `BuildArtifact` |
+| *Deploy* | Amazon ECS (azul/verde), `CodeDeployToECS` | Aplicación `blacklist-devops-app` y grupo `blacklist-devops-dg`. Toma `taskdef.json`, `appspec.yaml` e `imageDetail.json` de `BuildArtifact` |
+
+El pipeline es de tipo V2, en modo `QUEUED`: si llegan dos commits seguidos, el segundo espera a que
+termine el primero en lugar de cancelarlo. La configuración de la etapa *Deploy* es:
+
+```json
+{
+  "ApplicationName": "blacklist-devops-app",
+  "DeploymentGroupName": "blacklist-devops-dg",
+  "TaskDefinitionTemplateArtifact": "BuildArtifact",
+  "TaskDefinitionTemplatePath": "taskdef.json",
+  "AppSpecTemplateArtifact": "BuildArtifact",
+  "AppSpecTemplatePath": "appspec.yaml",
+  "Image1ArtifactName": "BuildArtifact",
+  "Image1ContainerName": "IMAGE1_NAME"
+}
+```
+
+`Image1ContainerName: IMAGE1_NAME` es lo que une las piezas: la acción lee la dirección de la imagen en
+`imageDetail.json` y la escribe donde `taskdef.json` dice `<IMAGE1_NAME>`.
+
+**Disparador.** Uno solo: el *push* a `main`, sin filtro de rutas. Todo commit en `main` inicia el
+pipeline; en la práctica es el *merge* de la promoción `dev` → `main`, porque `main` solo cambia por
+pull request. El disparador de pull requests de la Entrega 2 se quitó el 8 de noviembre: abrir o
+actualizar un PR no ejecuta nada en AWS.
+
+**Despliegue solo con un CI exitoso.** CodePipeline no inicia una etapa si la anterior falló. Si una
+prueba falla, *Build* termina en error, *Deploy* no se ejecuta y Fargate sigue con la versión anterior.
+Así se cumple el punto 3: el despliegue ocurre solo, pero solo después de un CI exitoso.
+
+![Figura 5.3. Disparadores de Git del pipeline: un solo filtro, Push, que incluye la rama main; no hay disparador de pull request](capturas/entrega-3/1.14-pipeline-disparadores-despues.png)
+
+![Figura 5.4. Pipeline blacklist-devops-ci-pipeline con las tres etapas, Source, Build y Deploy (Amazon ECS Blue/Green), en verde en la primera ejecución completa, 6ff261a0, con el commit 168dd91](capturas/entrega-3/1.16-pipeline-diagrama.png)
+
+**Hallazgo: los archivos de despliegue salen del build y no del origen.** La primera versión de la
+etapa *Deploy* tomaba `taskdef.json` y `appspec.yaml` de `SourceArtifact`, como en el ejemplo de la
+documentación de AWS. La ejecución `db778775`, del 8 de noviembre, terminó con *Deploy* en error
+(`ConfigurationError: Exception while trying to read the task definition artifact file from:
+SourceArtifact`) antes de crear el despliegue, y la aplicación siguió con la versión anterior. La causa
+es una cuota de CodePipeline: la acción `CodeDeployToECS` acepta artefactos de entrada de hasta 3 MB, y
+el de origen es el commit completo, de unos 43 MB, casi todos de capturas del documento. La solución
+fue que el `buildspec.yml` entregue los dos archivos junto con `imageDetail.json`: el artefacto del
+build pesa unos 2 KB.
+
+### 5.7 Primera ejecución completa
+
+El 8 de noviembre, `main` todavía no tenía la versión de `buildspec.yml` que entrega `taskdef.json` y
+`appspec.yaml` dentro del artefacto del build; llegó esa misma noche. Por eso la primera ejecución
+completa se lanzó a mano, con el commit de la rama de trabajo:
+
+| Dato | Valor |
+|---|---|
+| Ejecución | `6ff261a0-cda9-4fde-b40d-2c93df882218`, con *Source*, *Build* y *Deploy* en *Succeeded*, en 8 min 23 s |
+| Commit | `168dd91` |
+| Despliegue de CodeDeploy | `d-TEOBBBNFL`, *Succeeded*, de 17:17:00 a 17:21:07 (UTC-05:00): 4 min 7 s |
+| Servicio | `blacklist-devops-task:3`, 1 tarea en ejecución, tráfico en el grupo de destino verde |
+| `GET /ping` | `{"version": "168dd91"}`, la etiqueta de la imagen que construyó el pipeline |
+
+Esa ejecución comprobó que la configuración funciona de punta a punta. El disparo automático por un
+commit en `main` se comprobó después con las tres ejecuciones de las secciones 6 a 8, todas iniciadas
+por el *merge* de una promoción y sin intervención manual.
+
+![Figura 5.5. Historial de CodeDeploy: el despliegue d-TEOBBBNFL, azul/verde en Amazon ECS, de la aplicación blacklist-devops-app y el grupo blacklist-devops-dg, realizado correctamente](capturas/entrega-3/1.16-codedeploy-despliegue.png)
+
+![Figura 5.6. GET /ping contra el balanceador después del despliegue: 200 con la versión 168dd91](capturas/entrega-3/1.16-ping.png)
+
+### 5.8 Cumplimiento de los puntos del pipeline
+
+| Punto de la configuración del pipeline | Evidencia |
+|---|---|
+| Punto 1 (10 %): archivos de configuración en el repositorio para el despliegue continuo con CodeDeploy, con las pruebas unitarias en la construcción | Secciones 5.1 a 5.3: `buildspec.yml`, `taskdef.json`, `appspec.yaml` y `Dockerfile`; las pruebas son el primer comando del build. Ejecuciones: figura 7.4 (pruebas aprobadas) y figura 6.4 (una prueba falla y el build se detiene) |
+| Punto 2 (10 %): cada commit en `main` ejecuta el build y crea la imagen del contenedor | Secciones 5.4 y 5.6; figuras 5.1 y 5.3. Ejecuciones: figuras 7.1, 7.5 y 7.6 (commit, envío a ECR e imagen con la etiqueta del commit) |
+| Punto 3 (40 %): despliegue continuo automático en Fargate después de un CI exitoso | Secciones 5.5 a 5.7; figuras 5.2, 5.4, 5.5 y 5.6. Ejecuciones: figuras 7.7 y 7.8 (despliegue sin intervención y tráfico en la versión nueva) y sección 8 (reversión automática cuando el despliegue falla) |
+
+Con esta configuración, el pipeline cubre los tres puntos: los archivos están versionados en el
+repositorio, cada commit en `main` ejecuta las pruebas y construye la imagen, y un CI exitoso termina
+con la versión nueva desplegada en Fargate por CodeDeploy, sin intervención manual.
 
 ## 6. Pipeline de CI fallido
 
