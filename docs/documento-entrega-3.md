@@ -69,13 +69,15 @@ usuario sin privilegios (`appuser`, UID 10001) y recibe la etiqueta de la versi�
 ### 1.1 Pruebas por endpoint
 
 Son las mismas pruebas que ejecuta el CI antes de construir la imagen: validan el contrato y, en el
-pipeline, deciden si se construye y se despliega. La suite tiene 156 pruebas. Por archivo
+pipeline, deciden si se construye y se despliega. La suite tiene 171 pruebas. Por archivo
 (`pytest --collect-only -q` en `dev`): `test_ambiente_aws` 34, `test_app_creation` 1,
 `test_authentication` 10, `test_blacklist_api` 23, `test_configuration` 16, `test_domain` 1,
-`test_empaquetar` 15, `test_generar_pdf` 25, `test_monitor_disponibilidad` 25 y `test_ping` 6. Las
+`test_empaquetar` 15, `test_generar_pdf` 40, `test_monitor_disponibilidad` 25 y `test_ping` 6. Las
 de la API son 39 (23 en `tests/test_blacklist_api.py`, 10 casos de credencial inválida en
-`tests/test_authentication.py` y 6 en `tests/test_ping.py`); las otras 117 cubren la configuración,
-el dominio y los scripts del equipo.
+`tests/test_authentication.py` y 6 en `tests/test_ping.py`); las otras 132 cubren la configuración,
+el dominio y los scripts del equipo. Las ejecuciones de las secciones 6 a 8 corrieron con 156: las
+15 restantes son del generador del PDF de este documento y se agregaron el 13 de noviembre, después
+de esas ejecuciones; no cambian la aplicación.
 
 | Endpoint | Respuesta | Escenario | Prueba representativa |
 |---|---|---|---|
@@ -176,7 +178,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 1. Un desarrollador fusiona un cambio en `main` (el *merge* del PR `dev` → `main`).
 2. CodePipeline recibe el evento por la conexión de GitHub y la etapa Origen obtiene el código de ese
    commit.
-3. La etapa Construcción lanza CodeBuild, que instala las dependencias y ejecuta las 156 pruebas.
+3. La etapa Construcción lanza CodeBuild, que instala las dependencias y ejecuta todas las pruebas.
 4. Si todas pasan, CodeBuild construye la imagen con la etiqueta del commit, la envía a ECR con las
    etiquetas `<commit>` y `latest`, y escribe `imageDetail.json`. Si una falla, el build y la ejecución
    terminan en *Failed*: no hay imagen nueva y CodeDeploy no se ejecuta.
