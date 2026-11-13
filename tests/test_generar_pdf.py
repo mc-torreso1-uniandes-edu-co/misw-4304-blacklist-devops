@@ -142,3 +142,12 @@ def test_detecta_referencias_a_tareas_del_tablero(texto, esperado):
 ])
 def test_no_confunde_versiones_secciones_pr_ni_literales_con_tareas(texto):
     assert generar_pdf.referencias_a_tareas(texto) == []
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("Detalle en `docs/ci/entrega-3/2.5-cd-fallido.md`.", ["docs/ci/entrega-3/2.5-cd-fallido.md"]),
+    ("Ver README.md. Y también notas.md, al final.", ["README.md", "notas.md"]),
+    ("Sin citas: archivo.mdx, la extensión .md sola y la carpeta docs/.", []),
+])
+def test_citas_a_archivos_md(texto, esperado):
+    assert generar_pdf.citas_md(texto) == esperado

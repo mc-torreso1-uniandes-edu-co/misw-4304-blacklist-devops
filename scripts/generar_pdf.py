@@ -26,6 +26,7 @@ import sys
 import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import NoReturn
 
 RAIZ = Path(__file__).resolve().parent.parent
 DOCS = RAIZ / "docs"
@@ -84,7 +85,7 @@ table.texto td, table.texto td:first-child, table.texto td:first-child code { wh
 """
 
 
-def fallar(mensaje):
+def fallar(mensaje) -> NoReturn:
     print("ERROR:", mensaje)
     sys.exit(1)
 
@@ -111,7 +112,7 @@ def tiene_contenido(markdown):
 def imagenes_de(markdown):
     rutas = re.findall(r"!\[[^\]]*\]\(\s*<?([^)\s>]+)", markdown)
     rutas += re.findall(r'<img[^>]+src="([^"]+)"', markdown)
-    return sorted(set(r for r in rutas if not re.match(r"[a-z]+:", r)))
+    return sorted({r for r in rutas if not re.match(r"[a-z]+:", r)})
 
 
 def calcular_huella(ruta_documento, markdown, modo):
@@ -244,6 +245,12 @@ def imprimir_pdf(ruta_html, ruta_pdf):
         fallar("El navegador no generó el PDF.")
 
 
+def citas_md(markdown):
+    """Rutas o nombres de archivos .md citados en el documento (el tutor no los ve desde el PDF)."""
+    palabras = (w.rstrip("./-") for w in re.findall(r"[\w./-]+", markdown))
+    return sorted({w for w in palabras if len(w) > 3 and w.endswith(".md") and re.match(r"\w", w[-4])})
+
+
 # Referencias a tareas o issues del tablero ("la 1.6", "tareas 1.6 a 1.16", "(2.6, #210)", "(#199)"),
 # que el tutor no puede consultar. No cuenta versiones (3.13.16), secciones ni figuras, que llevan su
 # palabra delante, ni los PR ("PR #253", "promoción #254").
@@ -265,10 +272,10 @@ def referencias_a_tareas(markdown):
 def verificar(markdown, ruta_pdf):
     problemas = []
     etiquetas = re.findall(r"^\*\*([^*\n]*:)\*\*$", markdown, flags=re.M)
-    md_refs = re.findall(r"[\w./-]*\w\.md\b", markdown)
+    md_refs = citas_md(markdown)
     print("Marcadores [PENDIENTE] en el documento:", markdown.count("PENDIENTE"))
     if md_refs:
-        problemas.append("el documento cita archivos .md: %s" % sorted(set(md_refs)))
+        problemas.append("el documento cita archivos .md: %s" % md_refs)
     tareas = referencias_a_tareas(markdown)
     if tareas:
         problemas.append("el documento cita tareas del tablero, que el tutor no ve: %s" % tareas)
@@ -280,7 +287,7 @@ def verificar(markdown, ruta_pdf):
         texto = "\n".join(p.get_text() for p in doc)
         imagenes = sum(len(p.get_images()) for p in doc)
         paginas = doc.page_count
-    numeros = sorted(set(int(x) for x in re.findall(r"Figura (\d+)\.(?!\d)", texto)))
+    numeros = sorted({int(x) for x in re.findall(r"Figura (\d+)\.(?!\d)", texto)})
     por_capitulo = set(re.findall(r"Figura (\d+\.\d+)\.", texto))
     total = len(numeros) + len(por_capitulo)
     faltan = [e for e in etiquetas if e not in texto]
