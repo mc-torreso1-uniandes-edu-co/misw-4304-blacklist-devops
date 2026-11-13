@@ -970,7 +970,10 @@ CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC)
    equipo votó agregar una verificación de salud del contenedor en `taskdef.json` (`healthCheck`
    contra `/ping` en `localhost:8000`) en la ejecución que devuelve el puerto a `8000` (2.6, #210),
    para que ECS no dé por estable una tarea que no responde.
-   [PENDIENTE: resultado de la 2.6 en los eventos de ECS.] Otras salidas son un *listener* de prueba o la reversión por alarmas de
+   En la 2.6, con esa verificación, ECS dio la tarea por estable 18 s después de registrarla, con el
+   contenedor *Healthy*, y el despliegue terminó sin errores (`docs/ci/entrega-3/2.6-version-final.md`,
+   hallazgos 2 y 3). No se volvió a desplegar una versión que no responda, así que no queda probado que
+   el canario deje de pasarle tráfico. Otras salidas son un *listener* de prueba o la reversión por alarmas de
    CloudWatch, que la decisión 3 de la 1.2 dejó para la Entrega 4.
 
 ### 7.8 Cumplimiento del punto 3 del documento
