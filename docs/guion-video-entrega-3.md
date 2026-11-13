@@ -105,8 +105,9 @@ Rúbrica: documento, punto 1, CI fallido (4 %); punto 3, CI exitoso y CD fallido
 
 Antes de grabar:
 
-- Hacer la última promoción a `main` antes de grabar la parte 1: cada promoción vuelve a desplegar y cambia la
-  versión de `/ping`.
+- Se puede grabar con `d790bcb`. Una promoción posterior a `main` vuelve a desplegar y cambia la versión de `/ping`,
+  sin afectar lo grabado. La última promoción va antes de apagar el ambiente (4.7, #227): con el servicio apagado,
+  la etapa *Deploy* fallaría.
 - Servicio con la versión de la 2.6, una tarea sana en el grupo activo, balanceador activo y RDS disponible.
 - En ECR siguen las imágenes que se muestran (`f224bef`, `db6e990`, `69e12b8` y `d790bcb`): el ciclo de vida conserva 10.
 - Token cargado solo como valor actual en `blacklist-fargate`, con tipo *secret*.
