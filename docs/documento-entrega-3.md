@@ -498,9 +498,10 @@ Fargate después de un CI exitoso (punto 3, 40 %). Esta sección muestra la conf
 6 a 8 muestran las ejecuciones que la ponen a prueba.
 
 El pipeline es el de la Entrega 2, `blacklist-devops-ci-pipeline`, ampliado: el proyecto de CodeBuild
-ahora construye y envía la imagen, y una etapa nueva, *Deploy*, despliega con CodeDeploy. Los recursos
-de CodeBuild, CodeDeploy y CodePipeline se configuraron el 8 de noviembre de 2026, en la cuenta
-`253041091381` y la región `us-east-2`, sin activar características avanzadas.
+ahora construye y envía la imagen, y una etapa nueva, *Deploy*, despliega con CodeDeploy. CodeBuild,
+CodeDeploy y CodePipeline quedaron configurados el 8 de noviembre de 2026, en la cuenta `253041091381`
+y la región `us-east-2`: el proyecto de CodeBuild y el pipeline de la Entrega 2 se modificaron, y la
+aplicación y el grupo de CodeDeploy se crearon ese día.
 
 ### 5.1 Archivos de configuración en el repositorio
 
@@ -727,12 +728,13 @@ SourceArtifact`) antes de crear el despliegue, y la aplicación siguió con la v
 es una cuota de CodePipeline: la acción `CodeDeployToECS` acepta artefactos de entrada de hasta 3 MB, y
 el de origen es el commit completo, de unos 43 MB, casi todos de capturas del documento. La solución
 fue que el `buildspec.yml` entregue los dos archivos junto con `imageDetail.json`: el artefacto del
-build pesa menos de 2 KB.
+build pesa unos 2 KB.
 
 ### 5.7 Primera ejecución completa
 
-El 8 de noviembre, `main` todavía no tenía `taskdef.json`, `appspec.yaml` ni el `buildspec.yml` nuevo,
-así que la primera ejecución completa se lanzó a mano con el commit de la rama de trabajo:
+El 8 de noviembre, `main` todavía no tenía la versión de `buildspec.yml` que entrega `taskdef.json` y
+`appspec.yaml` dentro del artefacto del build; llegó esa misma noche. Por eso la primera ejecución
+completa se lanzó a mano, con el commit de la rama de trabajo:
 
 | Dato | Valor |
 |---|---|
