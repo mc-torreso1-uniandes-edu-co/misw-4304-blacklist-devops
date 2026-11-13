@@ -12,12 +12,13 @@
 
 1. Microservicio heredado y pruebas
 2. Arquitectura del CI/CD
-3. Configuración del despliegue en Fargate (20 %)
-4. Archivos de configuración y pipeline (60 %)
-5. Pipeline de CI fallido (punto 1 del documento, 4 %)
-6. Pipeline de CI y CD exitosos (punto 2 del documento, 8 %)
-7. CI exitoso y CD fallido, con reversión (punto 3 del documento, 8 %)
-8. Enlaces, decisiones y conclusiones
+3. Enlaces de la entrega
+4. Configuración del despliegue en Fargate (20 %)
+5. Archivos de configuración y pipeline (60 %)
+6. Pipeline de CI fallido (punto 1 del documento, 4 %)
+7. Pipeline de CI y CD exitosos (punto 2 del documento, 8 %)
+8. CI exitoso y CD fallido, con reversión (punto 3 del documento, 8 %)
+9. Decisiones y conclusiones
 
 ## 1. Microservicio heredado y pruebas
 
@@ -102,10 +103,10 @@ nada es manual: el *merge* a `main` termina con la versión nueva atendiendo el 
 
 **Estado de esta sección.** Es el diseño aprobado en la 1.3 el 4 de noviembre de 2026, ya
 implementado: las tareas 1.6 a 1.16 crearon los recursos entre el 5 y el 8 de noviembre con los
-nombres de esta sección, y la sección 3 muestra su configuración real. Dos cosas cambiaron después,
+nombres de esta sección, y la sección 4 muestra su configuración real. Dos cosas cambiaron después,
 por lo que mostraron las ejecuciones: el paso del tráfico, de `CodeDeployDefault.ECSAllAtOnce` al
-canario, el 9 de noviembre (sección 7.1), y la verificación de salud del contenedor, agregada en la
-2.6 el 12 de noviembre (sección 7, hallazgo 9).
+canario, el 9 de noviembre (sección 8.1), y la verificación de salud del contenedor, agregada en la
+2.6 el 12 de noviembre (sección 8, hallazgo 9).
 
 ```
 Desarrollador
@@ -151,9 +152,9 @@ ALB blacklist-devops-alb (puerto 80) ──▶ tareas ──▶ RDS PostgreSQL b
 | Repositorio | GitHub, `misw-4304-blacklist-devops` | Guarda el código, las pruebas y los archivos de configuración (`Dockerfile`, `buildspec.yml`, `appspec.yaml` y `taskdef.json`). `main` es la rama estable y `dev` la de integración; las dos están protegidas: solo cambian por pull request aprobado. El repositorio es el privado de GitHub, conectado a CodePipeline y CodeBuild como en la Entrega 2 (decisión 1 de la 1.1, 3 de 4 votos; confirmada por el curso el 3 de noviembre de 2026: «lo deben entregar en GitHub»). La tarea 1.4 (#192) se cerró como no planeada |
 | Conexión | `blacklist-devops-github` (AWS CodeConnections) | Autoriza a AWS a leer el repositorio mediante una aplicación de GitHub limitada a este repositorio, sin tokens personales ni llaves guardadas |
 | Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (el de la Entrega 2, con la etapa *Deploy* agregada en la 1.16) | Orquesta las tres etapas: *Source*, *Build* y *Deploy*. Con cada commit en `main` corren las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecuta nada en AWS (decisión 4 de la 1.1) |
-| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (el de la Entrega 2, con modo privilegiado desde la 1.14) | Ejecuta el `buildspec.yml`: instala las dependencias, corre las pruebas y, si pasan, construye la imagen y la envía a ECR. Si una prueba falla, el build termina en *Failed* y no hay imagen ni despliegue (sección 5) |
+| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (el de la Entrega 2, con modo privilegiado desde la 1.14) | Ejecuta el `buildspec.yml`: instala las dependencias, corre las pruebas y, si pasan, construye la imagen y la envía a ECR. Si una prueba falla, el build termina en *Failed* y no hay imagen ni despliegue (sección 6) |
 | Imagen | Amazon ECR privado, `blacklist-devops` (1.7) | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
-| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde, el *listener* de producción del balanceador y el rol `blacklist-devops-codedeploy-role`. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte solo ante `DEPLOYMENT_FAILURE`. En la sección 7 lo declaró fallido 7 min 30 s después de crearlo. Sin alarmas de CloudWatch |
+| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde, el *listener* de producción del balanceador y el rol `blacklist-devops-codedeploy-role`. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte solo ante `DEPLOYMENT_FAILURE`. En la sección 8 lo declaró fallido 7 min 30 s después de crearlo. Sin alarmas de CloudWatch |
 | Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` (1.10 y 1.11) | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada y periodo de gracia de salud de 60 s. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000; desde la revisión 6 (2.6), con una verificación de salud del contenedor contra `/ping` cada 15 s |
 | Red | VPC por defecto con tres subredes públicas; ALB `blacklist-devops-alb` con los grupos de destino tipo IP `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` (1.9) | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200, cada 15 s. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
 | Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` (1.8) | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
@@ -162,7 +163,7 @@ ALB blacklist-devops-alb (puerto 80) ──▶ tareas ──▶ RDS PostgreSQL b
 | Base de datos | RDS PostgreSQL `blacklist-db` (se conserva de la Entrega 1) | Sigue sin acceso público; acepta el 5432 desde el grupo de las tareas de Fargate (1.9). Si cambia `JWT_SECRET_KEY`, hay que generar un token nuevo para Postman, como hasta ahora |
 
 Los nombres de esta tabla son los del diseño (1.3, sección 6) y coinciden con los recursos creados;
-la sección 3 muestra su configuración.
+la sección 4 muestra su configuración.
 
 **Cuándo se ejecuta.** Con cada *push* a `main`, sin filtro de rutas: todo commit en la rama
 principal inicia el pipeline y, si el CI pasa, despliega. Es la decisión 4 de la 1.1: el pipeline
@@ -184,7 +185,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
    nueva; CodeDeploy levanta la versión nueva en el otro grupo de destino y traslada el tráfico con
    `CodeDeployDefault.ECSCanary10Percent5Minutes`: primero el 10 % durante 5 minutos y después el resto. Si la
    versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte a la versión anterior.
-   En la sección 7, sin verificación de salud del contenedor, lo declaró fallido 7 min 30 s después de
+   En la sección 8, sin verificación de salud del contenedor, lo declaró fallido 7 min 30 s después de
    crearlo y 43 s después de pasar el 100 % del tráfico; desde la 2.6, ECS solo da por estable una tarea
    cuyo contenedor responde en `/ping`.
 7. `/ping` responde la etiqueta del commit desplegado, así que la versión que atiende se comprueba
@@ -210,7 +211,39 @@ direcciones IPv4; cerca de 1,5 USD por día sin la RDS, precios de `us-east-2` c
 noviembre). El balanceador cobra aunque el servicio esté en cero tareas, así que los recursos solo se
 encienden mientras se trabaja y se graba, como en las entregas anteriores.
 
-## 3. Configuración del despliegue en Fargate
+## 3. Enlaces de la entrega
+
+| Recurso | Enlace |
+|---|---|
+| Repositorio de GitHub | https://github.com/mc-torreso1-uniandes-edu-co/misw-4304-blacklist-devops |
+| URL del servicio (balanceador de AWS Fargate) | http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com |
+| Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
+| Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
+| Video de sustentación (SharePoint de la Universidad) | [PENDIENTE: tarea 4.5 (#225).] |
+| Video de sustentación (YouTube) | [PENDIENTE: tarea 4.5 (#225).] |
+
+Notas aclaratorias:
+
+- **Recursos de las entregas anteriores.** El repositorio, el workspace de Postman y la documentación
+  publicada son los de las entregas 1 y 2; el contrato del API no cambió. Lo nuevo es la URL del
+  servicio, que ahora es la del balanceador de AWS Fargate en lugar del entorno de Elastic Beanstalk, el
+  environment `blacklist-fargate` del workspace y el video.
+- **Repositorio.** Es privado. Si el tutor necesita acceso, debe suministrar su usuario de GitHub para
+  agregarlo como colaborador. El pipeline toma el código de GitHub, sin AWS CodeCommit (sección 2).
+- **Servicio.** Según la aclaración del tutor sobre los recursos de AWS, el ambiente solo está
+  encendido mientras se trabaja y se graba el video, así que la URL puede no responder durante la
+  calificación. La raíz de la URL responde 404 porque el API no define esa ruta; `/ping` responde con la
+  versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
+  secciones 6 a 8.
+  [PENDIENTE: estado final del balanceador y del servicio después de la grabación, tarea 4.7 (#227).]
+- **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
+  ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
+- **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
+  Teams/SharePoint de la Universidad, con acceso para las personas de la Universidad de los Andes
+  (solo vista). El segundo está en YouTube, como copia de respaldo para quien no pueda abrir el de
+  la Universidad.
+
+## 4. Configuración del despliegue en Fargate
 
 Cubre el 20 % del enunciado: la configuración manual del ambiente en AWS Fargate, el despliegue
 manual y la validación del microservicio. Todo está en la cuenta `253041091381` y en la región
@@ -222,15 +255,15 @@ el 8, la definición de la tarea el 8 a las 14:52:21 y el servicio el 8 a las 15
 La configuración se hizo desde la consola de AWS y con la AWS CLI en AWS CloudShell: la consola para
 el repositorio, los parámetros, la red y el balanceador; la CLI para el clúster, la definición, el
 servicio y la validación. Los nombres de ECR, ECS, el balanceador y los parámetros de la sección 2 son
-los de esta configuración; los de CodeDeploy aparecen en las secciones 6 y 7.
+los de esta configuración; los de CodeDeploy aparecen en las secciones 7 y 8.
 
 El clúster, el servicio, el balanceador, los grupos de seguridad, el repositorio y los parámetros son
 los mismos que usa el pipeline. Lo que cambia en cada despliegue es la revisión de la definición de
 la tarea y el grupo de destino que atiende el tráfico: el despliegue manual de esta sección usó la
-revisión 1 y el grupo azul; las secciones 6 y 7 documentan las revisiones posteriores y el despliegue
+revisión 1 y el grupo azul; las secciones 7 y 8 documentan las revisiones posteriores y el despliegue
 azul/verde, y la 5 es un CI fallido, sin despliegue.
 
-### 3.1 Orden de creación y dependencias
+### 4.1 Orden de creación y dependencias
 
 | Paso | Recurso | Nombre | Depende de |
 |---|---|---|---|
@@ -250,7 +283,7 @@ azul, y el balanceador necesita antes sus grupos de seguridad y de destino. El g
 creó antes de la definición porque el rol de ejecución no tiene `logs:CreateLogGroup`: sin el grupo,
 la tarea no arranca.
 
-### 3.2 Repositorio de Amazon ECR
+### 4.2 Repositorio de Amazon ECR
 
 | Propiedad | Valor |
 |---|---|
@@ -262,7 +295,7 @@ la tarea no arranca.
 | Análisis de imágenes | El básico del registro, sin análisis al enviar (`scanOnPush: false`) ni reglas |
 | Política de ciclo de vida | Conserva las últimas 10 imágenes |
 | Imagen usada en el despliegue manual | `f224bef`, `sha256:8c217021f564a49fe178ce79257f97776bb64c581919b57b1dcd4fb476ddb644`, 60,43 MB, enviada el 5 de noviembre de 2026 a las 22:09:34 |
-| Imagen de `latest` al cierre de la sección 3 | `168dd91`, enviada por el pipeline el 8 de noviembre |
+| Imagen de `latest` al cierre de la sección 4 | `168dd91`, enviada por el pipeline el 8 de noviembre |
 
 El repositorio es privado y usa etiquetas mutables porque `latest` se mueve en cada envío; con
 etiquetas inmutables el segundo envío fallaría. La política de ciclo de vida conserva las últimas 10
@@ -270,9 +303,9 @@ imágenes, suficientes para las ejecuciones de la entrega y una reversión. La i
 manual se etiquetó con los siete primeros caracteres del commit, `f224bef`, y con `latest`; la
 definición de la tarea usa la etiqueta del commit y no `latest`, que ya apunta a una imagen posterior.
 
-![Figura 3.1. Repositorio blacklist-devops en ECR con la imagen f224bef y la etiqueta latest, en el momento del despliegue manual](capturas/entrega-3/1.7-ecr-imagen.png)
+![Figura 4.1. Repositorio blacklist-devops en ECR con la imagen f224bef y la etiqueta latest, en el momento del despliegue manual](capturas/entrega-3/1.7-ecr-imagen.png)
 
-### 3.3 Clúster y definición de la tarea
+### 4.3 Clúster y definición de la tarea
 
 | Dato | Valor |
 |---|---|
@@ -286,7 +319,7 @@ El clúster solo admite el proveedor `FARGATE`; no se habilitó `FARGATE_SPOT` p
 interrumpir esas tareas. Container Insights quedó desactivado, que es el valor por defecto y no suma
 costo de métricas.
 
-![Figura 3.2. Clúster blacklist-devops-cluster: activo, solo Fargate y sin servicios ni tareas](capturas/entrega-3/1.10-cluster-detalle.png)
+![Figura 4.2. Clúster blacklist-devops-cluster: activo, solo Fargate y sin servicios ni tareas](capturas/entrega-3/1.10-cluster-detalle.png)
 
 | Dato | Valor |
 |---|---|
@@ -309,20 +342,20 @@ del `Dockerfile` y de los grupos de destino. La imagen es la de la 1.7 con la et
 porque su valor por defecto, `1`, corresponde a un solo intermediario delante de la aplicación, el
 balanceador.
 
-![Figura 3.3. Definición blacklist-devops-task:1 activa, Fargate y con el rol de ejecución](capturas/entrega-3/1.10-tarea-detalle.png)
+![Figura 4.3. Definición blacklist-devops-task:1 activa, Fargate y con el rol de ejecución](capturas/entrega-3/1.10-tarea-detalle.png)
 
 `DATABASE_URL` y `JWT_SECRET_KEY` no están en la definición: aparecen en `secrets` como referencias a
 los parámetros `SecureString` de la 1.8, y solo el rol de ejecución puede leerlos. La definición no
 contiene ningún valor.
 
-![Figura 3.4. Parámetros de Parameter Store: los dos nombres, tipo SecureString y nivel Standard](capturas/entrega-3/1.8-parametros-lista.png)
+![Figura 4.4. Parámetros de Parameter Store: los dos nombres, tipo SecureString y nivel Standard](capturas/entrega-3/1.8-parametros-lista.png)
 
 El grupo `/ecs/blacklist-devops` se creó antes de la definición, con retención de 7 días. El
 contenedor escribe allí con el controlador `awslogs` y el prefijo `ecs`.
 
-![Figura 3.5. Grupo de registros /ecs/blacklist-devops con retención de 7 días](capturas/entrega-3/1.10-registros-grupo.png)
+![Figura 4.5. Grupo de registros /ecs/blacklist-devops con retención de 7 días](capturas/entrega-3/1.10-registros-grupo.png)
 
-### 3.4 Red y balanceador
+### 4.4 Red y balanceador
 
 | Recurso | Nombre | Identificador |
 |---|---|---|
@@ -349,9 +382,9 @@ comprobaciones para sano y dos para no sano; la anulación de registro es de 30 
 pantallas de las capturas mostró el
 aviso de características avanzadas.
 
-![Figura 3.6. Balanceador blacklist-devops-alb activo en us-east-2](capturas/entrega-3/1.9-alb-activo.png)
+![Figura 4.6. Balanceador blacklist-devops-alb activo en us-east-2](capturas/entrega-3/1.9-alb-activo.png)
 
-### 3.5 Servicio y validación
+### 4.5 Servicio y validación
 
 Datos del servicio en el despliegue manual:
 
@@ -376,11 +409,11 @@ registrada en el grupo azul, con un periodo de gracia de salud de 60 s: la salud
 comprobaciones de 15 s y así ECS no reemplaza la tarea mientras Gunicorn arranca. El servicio alcanzó
 el estado estable con 1 tarea en ejecución, 0 pendientes y el destino azul `healthy`.
 
-![Figura 3.7. Servicio blacklist-devops-service estable con 1 tarea y la definición blacklist-devops-task:1](capturas/entrega-3/1.11-servicio-estable.png)
+![Figura 4.7. Servicio blacklist-devops-service estable con 1 tarea y la definición blacklist-devops-task:1](capturas/entrega-3/1.11-servicio-estable.png)
 
-![Figura 3.8. Tarea del servicio en estado Ejecutando](capturas/entrega-3/1.11-tarea-ejecucion.png)
+![Figura 4.8. Tarea del servicio en estado Ejecutando](capturas/entrega-3/1.11-tarea-ejecucion.png)
 
-![Figura 3.9. Grupo de destino azul con 1 destino sano y 0 en mal estado](capturas/entrega-3/1.11-tg-azul-sano.png)
+![Figura 4.9. Grupo de destino azul con 1 destino sano y 0 en mal estado](capturas/entrega-3/1.11-tg-azul-sano.png)
 
 La validación se hizo contra la URL del balanceador, desde CloudShell:
 
@@ -410,18 +443,18 @@ en `blacklist-db`, la base compartida con las entregas anteriores, así que la v
 PostgreSQL real y no SQLite. El balanceador atiende HTTP sin TLS, así que el token viaja sin cifrar
 entre el cliente y el balanceador; es una limitación conocida y queda anotada.
 
-![Figura 3.10. GET /ping contra el balanceador: 200 con la versión f224bef](capturas/entrega-3/1.11-api-ping.png)
+![Figura 4.10. GET /ping contra el balanceador: 200 con la versión f224bef](capturas/entrega-3/1.11-api-ping.png)
 
-![Figura 3.11. POST /blacklists y GET /blacklists/<email> contra el balanceador: 201 y 200, sin mostrar el token](capturas/entrega-3/1.11-api-post-get.png)
+![Figura 4.11. POST /blacklists y GET /blacklists/<email> contra el balanceador: 201 y 200, sin mostrar el token](capturas/entrega-3/1.11-api-post-get.png)
 
 **Estado al cierre de esta sección.** Después de la validación manual, el pipeline desplegó la
 revisión 3 de `blacklist-devops-task` con la imagen `168dd91` y movió el *listener* de producción al
 grupo verde, que tiene 1 destino sano; el servicio quedó apuntando a ese grupo y sigue con 1 tarea en
 ejecución. La revisión 1, la del despliegue manual, sigue `ACTIVE` y es la base de la familia. Las
 capturas de esta sección son del despliegue manual, anteriores a ese despliegue; las ejecuciones
-automáticas se documentan en las secciones 5 a 7.
+automáticas se documentan en las secciones 6 a 8.
 
-### 3.6 Versiones y costo
+### 4.6 Versiones y costo
 
 | Componente | Versión |
 |---|---|
@@ -452,15 +485,15 @@ aunque no haya tareas, así que los recursos solo se encienden mientras se traba
 
 El despliegue manual es la base que el pipeline reproduce: la misma familia de definición y el mismo
 servicio, con la diferencia de que la acción *Deploy* registra una revisión nueva con la imagen del
-commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 5 a 7 documentan esas ejecuciones.
+commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 6 a 8 documentan esas ejecuciones.
 
-## 4. Archivos de configuración y pipeline
+## 5. Archivos de configuración y pipeline
 
 [PENDIENTE: tarea 3.3 (#213).]
 
-## 5. Pipeline de CI fallido
+## 6. Pipeline de CI fallido
 
-La sección 4 documenta los archivos de configuración y el pipeline; esta sección documenta la
+La sección 5 documenta los archivos de configuración y el pipeline; esta sección documenta la
 ejecución que falló en la integración continua, el punto 1 del documento del enunciado (4 %). Es la
 ejecución `e363652d`, disparada por el *merge* de la promoción #254 en `main` con una prueba que
 falla a propósito. El *build* se detuvo en las pruebas: no se construyó ni se envió la imagen y no
@@ -468,11 +501,11 @@ hubo despliegue. El servicio de Fargate siguió con la versión que dejó la 2.3
 
 La ejecución es del **9 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
 Las horas están en UTC-05:00. No se creó infraestructura nueva: se usaron el clúster, el servicio, el
-balanceador y los grupos de destino de la sección 3. La prueba que falla llegó a `dev` con el PR #253
+balanceador y los grupos de destino de la sección 4. La prueba que falla llegó a `dev` con el PR #253
 y a `main` con la promoción #254; el *push* del *merge commit* inició el pipeline sin intervención
 manual.
 
-### 5.1 Resultado de la ejecución
+### 6.1 Resultado de la ejecución
 
 | Dato | Valor |
 |---|---|
@@ -494,7 +527,7 @@ manual.
 La suite base tiene 156 pruebas; la ejecución de la 2.4 corre 157 porque suma la prueba que falla a
 propósito. De las 157, 156 pasan y una falla, que es el resultado esperado de esta prueba.
 
-### 5.2 Línea de tiempo
+### 6.2 Línea de tiempo
 
 | Hora | Evento |
 |---|---|
@@ -516,58 +549,58 @@ propósito. De las 157, 156 pasan y una falla, que es el resultado esperado de e
 `GET /ping` por el balanceador, consultado cada 2 s desde las 22:57:39: las 360 consultas respondieron
 200 con `{"version": "db6e990"}`. La latencia fue de 195 a 611 ms, con un promedio de 235 ms.
 
-### 5.3 Pipeline y build
+### 6.3 Pipeline y build
 
 La ejecución con *Source* en verde, *Build* en rojo y *Deploy* con «No se ejecutó». El resumen muestra
 el desencadenador: el commit `299125d` enviado a `main` con el mensaje de la promoción, y el mensaje
 de error de `pytest`.
 
-![Figura 5.1. Ejecución e363652d del pipeline: Source en verde, Build en rojo y Deploy con «No se ejecutó»; el desencadenador es el commit 299125d de la promoción](capturas/entrega-3/2.4-pipeline-ejecucion.png)
+![Figura 6.1. Ejecución e363652d del pipeline: Source en verde, Build en rojo y Deploy con «No se ejecutó»; el desencadenador es el commit 299125d de la promoción](capturas/entrega-3/2.4-pipeline-ejecucion.png)
 
 Historial: la ejecución `e363652d` en *Error* sobre la `31b06edb` de la 2.3; las dos se iniciaron con
 un commit en `main`.
 
-![Figura 5.2. Historial de ejecuciones: e363652d en Error sobre 31b06edb; las dos se iniciaron con un commit en main](capturas/entrega-3/2.4-pipeline-historial.png)
+![Figura 6.2. Historial de ejecuciones: e363652d en Error sobre 31b06edb; las dos se iniciaron con un commit en main](capturas/entrega-3/2.4-pipeline-historial.png)
 
 Fases del build 29: `INSTALL` y las anteriores en *Realizado correctamente*, `BUILD` en *Error* con
 `COMMAND_EXECUTION_ERROR` sobre `python -m pytest -q --cov=app`. El iniciador es
 `codepipeline/blacklist-devops-ci-pipeline` y la versión de origen resuelta es `299125d`.
 
-![Figura 5.3. Fases del build 29: INSTALL y las anteriores correctas, BUILD en Error con COMMAND_EXECUTION_ERROR sobre pytest](capturas/entrega-3/2.4-build-fases.png)
+![Figura 6.3. Fases del build 29: INSTALL y las anteriores correctas, BUILD en Error con COMMAND_EXECUTION_ERROR sobre pytest](capturas/entrega-3/2.4-build-fases.png)
 
 Registro del build: la prueba `test_intentional_failure_for_the_pipeline` falla con
 `assert 200 == 500`, la cobertura sigue en 100 % y el resumen es `1 failed, 156 passed`. La fase
 `BUILD` termina en `FAILED`.
 
-![Figura 5.4. Registro del build: la prueba intencional falla con assert 200 == 500, la cobertura sigue en 100 % y el resumen es 1 failed, 156 passed](capturas/entrega-3/2.4-build-pruebas.png)
+![Figura 6.4. Registro del build: la prueba intencional falla con assert 200 == 500, la cobertura sigue en 100 % y el resumen es 1 failed, 156 passed](capturas/entrega-3/2.4-build-pruebas.png)
 
 Después del fallo: `POST_BUILD` ejecuta el bloque del envío, pero `CODEBUILD_BUILD_SUCCEEDING` no es
 `1` y no hay `docker push`. `UPLOAD_ARTIFACTS` muestra `Skipping invalid file path imageDetail.json` y
 `Found 2 file(s)`.
 
-![Figura 5.5. Fin del registro del build: POST_BUILD no envía la imagen porque CODEBUILD_BUILD_SUCCEEDING no es 1, y UPLOAD_ARTIFACTS omite imageDetail.json](capturas/entrega-3/2.4-build-artefacto.png)
+![Figura 6.5. Fin del registro del build: POST_BUILD no envía la imagen porque CODEBUILD_BUILD_SUCCEEDING no es 1, y UPLOAD_ARTIFACTS omite imageDetail.json](capturas/entrega-3/2.4-build-artefacto.png)
 
-### 5.4 Sin imagen ni despliegue
+### 6.4 Sin imagen ni despliegue
 
 Repositorio `blacklist-devops`: cinco imágenes y ninguna con la etiqueta `299125d`. La más reciente
 sigue siendo `latest, db6e990`, del 9 de noviembre a las 18:03:11.
 
-![Figura 5.6. Repositorio blacklist-devops en ECR: cinco imágenes y ninguna con la etiqueta 299125d; la más reciente sigue siendo latest, db6e990](capturas/entrega-3/2.4-ecr-imagenes.png)
+![Figura 6.6. Repositorio blacklist-devops en ECR: cinco imágenes y ninguna con la etiqueta 299125d; la más reciente sigue siendo latest, db6e990](capturas/entrega-3/2.4-ecr-imagenes.png)
 
 Historial de CodeDeploy: solo los despliegues de la 1.16 (`d-TEOBBBNFL`) y de la 2.3 (`d-UKCBNTBGL`).
 La etapa *Deploy* no se ejecutó, así que la acción *Deploy* no registró ninguna revisión nueva y
 CodeDeploy no creó ningún despliegue. El historial muestra las dos entradas como «Acción del usuario»,
 el nombre que da CodeDeploy a los despliegues creados por una llamada a su API, incluidos los de la
-acción *Deploy* del pipeline; no implica intervención manual (sección 6.5, hallazgo 7).
+acción *Deploy* del pipeline; no implica intervención manual (sección 7.5, hallazgo 7).
 
-![Figura 5.7. Historial de CodeDeploy: solo d-UKCBNTBGL y d-TEOBBBNFL; no hay despliegue de la ejecución fallida](capturas/entrega-3/2.4-codedeploy-despliegues.png)
+![Figura 6.7. Historial de CodeDeploy: solo d-UKCBNTBGL y d-TEOBBBNFL; no hay despliegue de la ejecución fallida](capturas/entrega-3/2.4-codedeploy-despliegues.png)
 
 Servicio `blacklist-devops-service` a las 23:10: revisión `blacklist-devops-task:4`, 1 tarea en
 ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
 
-![Figura 5.8. Servicio blacklist-devops-service: revisión blacklist-devops-task:4, 1 tarea en ejecución y 1 destino sano en blacklist-devops-tg-azul](capturas/entrega-3/2.4-ecs-servicio.png)
+![Figura 6.8. Servicio blacklist-devops-service: revisión blacklist-devops-task:4, 1 tarea en ejecución y 1 destino sano en blacklist-devops-tg-azul](capturas/entrega-3/2.4-ecs-servicio.png)
 
-### 5.5 Hallazgos
+### 6.5 Hallazgos
 
 1. **El fallo de las pruebas detiene todo lo que sigue.** `pytest` es el primer comando de la fase
    `BUILD`: al salir con código 1, CodeBuild marca la fase como fallida y no ejecuta los comandos
@@ -597,34 +630,34 @@ ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
    promoción fallaría igual. La 2.5 (#209) la retira en la misma promoción que provoca el CD fallido;
    hasta entonces no se promueve nada más a `main`.
 
-### 5.6 Cumplimiento del punto 1 del documento
+### 6.6 Cumplimiento del punto 1 del documento
 
 | Requisito del punto 1 (4 %) | Evidencia |
 |---|---|
-| Ejecución de CI fallida documentada: commit, disparador y etapa que falla | 5.1 y 5.2 (datos); figuras 5.1 y 5.2 en 5.3 |
-| Causa y mensaje del fallo | 5.3; figuras 5.3 y 5.4 |
-| Qué no se ejecuta: imagen y despliegue | 5.3 y 5.4; figuras 5.5 a 5.8 |
-| Hallazgos y capturas de los servicios de AWS | 5.3 a 5.5; siete hallazgos y ocho figuras |
-| Servicio sin cambios | 5.4; figura 5.8 y `/ping` con `db6e990` |
+| Ejecución de CI fallida documentada: commit, disparador y etapa que falla | 6.1 y 6.2 (datos); figuras 6.1 y 6.2 en 6.3 |
+| Causa y mensaje del fallo | 6.3; figuras 6.3 y 6.4 |
+| Qué no se ejecuta: imagen y despliegue | 6.3 y 6.4; figuras 6.5 a 6.8 |
+| Hallazgos y capturas de los servicios de AWS | 6.3 a 6.5; siete hallazgos y ocho figuras |
+| Servicio sin cambios | 6.4; figura 6.8 y `/ping` con `db6e990` |
 
 Con esta ejecución, el punto 1 del documento queda cubierto: el commit disparó el CI, el build falló
 en la prueba que falla a propósito y no se construyó ni se envió la imagen; la acción *Deploy* no se
-ejecutó y el servicio siguió con `db6e990`. El CI y el CD exitosos se documentan en la sección 6, y
-el CD fallido en la sección 7.
+ejecutó y el servicio siguió con `db6e990`. El CI y el CD exitosos se documentan en la sección 7, y
+el CD fallido en la sección 8.
 
-## 6. Pipeline de CI y CD exitosos
+## 7. Pipeline de CI y CD exitosos
 
-La sección 3 cerró con la revisión 3 de `blacklist-devops-task` (`168dd91`) y el tráfico en el grupo
+La sección 4 cerró con la revisión 3 de `blacklist-devops-task` (`168dd91`) y el tráfico en el grupo
 de destino verde. Esta sección documenta la ejecución que desplegó la revisión 4 (`db6e990`) y
 devolvió el tráfico al grupo azul. Es el punto 2 del documento del enunciado (8 %): un CI exitoso
 seguido de un CD exitoso, con hallazgos y capturas de los servicios de AWS.
 
 La ejecución es del **9 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
 Las horas están en UTC-05:00. No se creó infraestructura nueva: se usaron el clúster, el servicio, el
-balanceador y los grupos de destino de la sección 3. La configuración de los archivos y del pipeline
-se documenta en la sección 4; esta sección se centra en la ejecución.
+balanceador y los grupos de destino de la sección 4. La configuración de los archivos y del pipeline
+se documenta en la sección 5; esta sección se centra en la ejecución.
 
-### 6.1 Resultado de la ejecución
+### 7.1 Resultado de la ejecución
 
 | Dato | Valor |
 |---|---|
@@ -646,7 +679,7 @@ CodeDeploy crea el conjunto de tareas de sustitución y mueve el tráfico. La de
 secretos por referencia a Parameter Store: `DATABASE_URL` y `JWT_SECRET_KEY` no tienen valores en el
 archivo ni en las capturas.
 
-### 6.2 Línea de tiempo
+### 7.2 Línea de tiempo
 
 | Hora | Evento |
 |---|---|
@@ -666,44 +699,44 @@ archivo ni en las capturas.
 `{"version": "168dd91"}` hasta las 18:05:20 y `{"version": "db6e990"}` desde las 18:05:53. Ninguna
 consulta falló.
 
-### 6.3 Pipeline y build
+### 7.3 Pipeline y build
 
 La ejecución con las tres etapas en verde. El resumen muestra el desencadenador: el commit `db6e990`
 enviado a `main` con el mensaje de la promoción.
 
-![Figura 6.1. Ejecución 31b06edb del pipeline con las tres etapas en verde y el commit db6e990 de la promoción como desencadenador](capturas/entrega-3/2.3-pipeline-ejecucion.png)
+![Figura 7.1. Ejecución 31b06edb del pipeline con las tres etapas en verde y el commit db6e990 de la promoción como desencadenador](capturas/entrega-3/2.3-pipeline-ejecucion.png)
 
 Línea temporal: *Source* 5 s, etapa *Build* 3 min 35 s y *Deploy* 4 min 37 s.
 
-![Figura 6.2. Línea temporal de la ejecución: Source 5 s, etapa Build 3 min 35 s y Deploy 4 min 37 s](capturas/entrega-3/2.3-pipeline-linea-temporal.png)
+![Figura 7.2. Línea temporal de la ejecución: Source 5 s, etapa Build 3 min 35 s y Deploy 4 min 37 s](capturas/entrega-3/2.3-pipeline-linea-temporal.png)
 
 Fases del build, todas en *Realizado correctamente*. La versión de origen resuelta es `db6e990` y el
 iniciador es `codepipeline/blacklist-devops-ci-pipeline`.
 
-![Figura 6.3. Fases del build ba2e2bd9, todas completadas, con la versión de origen db6e990 y el iniciador del pipeline](capturas/entrega-3/2.3-build-fases.png)
+![Figura 7.3. Fases del build ba2e2bd9, todas completadas, con la versión de origen db6e990 y el iniciador del pipeline](capturas/entrega-3/2.3-build-fases.png)
 
 Registro del build: cobertura del 100 % y `156 passed`, seguido de las validaciones de `COMMIT_ID`,
 `AWS_ACCOUNT_ID` y `AWS_DEFAULT_REGION`, el inicio de sesión en ECR y el `docker build` con la
 etiqueta del commit.
 
-![Figura 6.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 %, validaciones y construcción de la imagen db6e990](capturas/entrega-3/2.3-build-pruebas.png)
+![Figura 7.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 %, validaciones y construcción de la imagen db6e990](capturas/entrega-3/2.3-build-pruebas.png)
 
 Envío a ECR: `db6e990` y `latest` con el mismo *digest*, `imageDetail.json` con la dirección de la
 imagen y el artefacto con `imageDetail.json`, `taskdef.json` y `appspec.yaml`.
 
-![Figura 6.5. Envío de la imagen db6e990 y latest a ECR y artefacto con imageDetail.json, taskdef.json y appspec.yaml](capturas/entrega-3/2.3-build-envio-ecr.png)
+![Figura 7.5. Envío de la imagen db6e990 y latest a ECR y artefacto con imageDetail.json, taskdef.json y appspec.yaml](capturas/entrega-3/2.3-build-envio-ecr.png)
 
-### 6.4 Imagen en ECR y despliegue azul/verde
+### 7.4 Imagen en ECR y despliegue azul/verde
 
 Repositorio `blacklist-devops`: la imagen `latest, db6e990` de las 18:03:11, extraída por Fargate a
 las 18:03:42.
 
-![Figura 6.6. Repositorio blacklist-devops en ECR con la imagen db6e990 y latest, enviada a las 18:03:11 y extraída por Fargate a las 18:03:42](capturas/entrega-3/2.3-ecr-imagen.png)
+![Figura 7.6. Repositorio blacklist-devops en ECR con la imagen db6e990 y latest, enviada a las 18:03:11 y extraída por Fargate a las 18:03:42](capturas/entrega-3/2.3-ecr-imagen.png)
 
 `d-UKCBNTBGL`: los cuatro pasos completados y el 100 % del tráfico en el conjunto de tareas de
 sustitución.
 
-![Figura 6.7. Despliegue d-UKCBNTBGL de CodeDeploy con los cuatro pasos completados y el 100 % del tráfico en el conjunto de sustitución](capturas/entrega-3/2.3-codedeploy-despliegue.png)
+![Figura 7.7. Despliegue d-UKCBNTBGL de CodeDeploy con los cuatro pasos completados y el 100 % del tráfico en el conjunto de sustitución](capturas/entrega-3/2.3-codedeploy-despliegue.png)
 
 La tabla de conjuntos de tareas no se había refrescado: todavía muestra el conjunto original como
 `ACTIVE` con 1 tarea, aunque el paso 4 (terminación del conjunto original) ya aparece completado a
@@ -712,7 +745,7 @@ tabla.
 
 *Listener* HTTP:80 del balanceador, que ahora reenvía a `blacklist-devops-tg-azul`.
 
-![Figura 6.8. Listener HTTP:80 del balanceador blacklist-devops-alb reenviando al grupo de destino azul](capturas/entrega-3/2.3-alb-listener.png)
+![Figura 7.8. Listener HTTP:80 del balanceador blacklist-devops-alb reenviando al grupo de destino azul](capturas/entrega-3/2.3-alb-listener.png)
 
 La verificación de salud del grupo de destino consulta `/ping` cada 15 s, con 5 s de espera, dos
 comprobaciones para sano y dos para no sano. Con `ECSAllAtOnce` y sin *listener* de prueba, el grupo
@@ -728,9 +761,9 @@ curl -s $URL/ping
 
 El grupo de despliegue tiene la reversión automática activa ante `DEPLOYMENT_FAILURE`; en esta
 ejecución no se activó porque el despliegue terminó en *Succeeded*. El CD fallido y la reversión se
-documentan en la sección 7.
+documentan en la sección 8.
 
-### 6.5 Hallazgos
+### 7.5 Hallazgos
 
 1. **El commit en `main` dispara el pipeline completo.** La ejecución inició 3 s después del *merge*,
    con el disparador `WebhookV2` y `PUSH_BRANCH` sobre `main`. La 1.16 se había comprobado con una
@@ -740,7 +773,7 @@ documentan en la sección 7.
    son el primer comando de la fase `build`: si una falla, CodeBuild detiene la fase ahí y no se
    ejecuta el `docker build`. Además, `post_build` solo envía la imagen a ECR si
    `CODEBUILD_BUILD_SUCCEEDING` es `1`. El `set -e` no es lo que impide el envío; solo hace fallar el
-   build si falla el envío. Ese caso es la sección 5.
+   build si falla el envío. Ese caso es la sección 6.
 3. **La versión desplegada es trazable al commit.** La etiqueta de la imagen, la definición
    `blacklist-devops-task:4` y `/ping` dicen `db6e990`, que es el commit del *push*. `latest` apunta
    al mismo *digest*.
@@ -752,7 +785,7 @@ documentan en la sección 7.
    documenta en la guía de solución de problemas de CodeDeploy para ECS. El cambio del *listener* fue
    a las 18:05:27 y ninguna consulta a `/ping` falló porque la versión nueva estaba bien. El conjunto
    anterior siguió dos minutos más en el grupo verde antes de terminarse. Por esta limitación, desde
-   la prueba del CD fallido (sección 7) el grupo de despliegue usa
+   la prueba del CD fallido (sección 8) el grupo de despliegue usa
    `CodeDeployDefault.ECSCanary10Percent5Minutes` (votación del equipo del 10 de noviembre). Esa
    prueba mostró que el canario tampoco verifica la salud antes del primer 10 % del tráfico; la
    corrección es la verificación de salud del contenedor de la 2.6 (#210).
@@ -767,24 +800,24 @@ documentan en la sección 7.
    pipeline: `d-UKCBNTBGL` es el identificador externo de esa acción en la ejecución `31b06edb`.
    Nadie lo inició a mano.
 
-### 6.6 Cumplimiento del punto 2 del documento
+### 7.6 Cumplimiento del punto 2 del documento
 
 | Requisito del punto 2 (8 %) | Evidencia |
 |---|---|
-| Ejecución de CI exitosa: commit, build y pruebas | Secciones 6.1 y 6.2; figuras 6.1 a 6.4 |
-| Imagen del contenedor en ECR con la etiqueta del commit | Sección 6.3; figuras 6.5 y 6.6 |
-| CD exitoso en Fargate sin intervención manual | Sección 6.4; figuras 6.7 y 6.8; hallazgos 1 y 7 |
-| Aplicación respondiendo con la versión nueva | Secciones 6.2 y 6.4; `/ping` con `db6e990` |
-| Hallazgos y capturas de los servicios de AWS | Secciones 6.3 a 6.5; ocho figuras y siete hallazgos |
+| Ejecución de CI exitosa: commit, build y pruebas | Secciones 7.1 y 7.2; figuras 7.1 a 7.4 |
+| Imagen del contenedor en ECR con la etiqueta del commit | Sección 7.3; figuras 7.5 y 7.6 |
+| CD exitoso en Fargate sin intervención manual | Sección 7.4; figuras 7.7 y 7.8; hallazgos 1 y 7 |
+| Aplicación respondiendo con la versión nueva | Secciones 7.2 y 7.4; `/ping` con `db6e990` |
+| Hallazgos y capturas de los servicios de AWS | Secciones 7.3 a 7.5; ocho figuras y siete hallazgos |
 
 Con esta ejecución, el punto 2 del documento queda cubierto: el commit disparó el CI, el build
 ejecutó las 156 pruebas y publicó la imagen, y CodeDeploy desplegó la revisión 4 en Fargate sin
 intervención manual; `/ping` confirmó la versión nueva. El CI fallido y el CD fallido se documentan
-en las secciones 5 y 7.
+en las secciones 6 y 8.
 
-## 7. CI exitoso y CD fallido, con reversión
+## 8. CI exitoso y CD fallido, con reversión
 
-La sección 6 cerró con la revisión 4 de `blacklist-devops-task` (`db6e990`) atendiendo en el grupo de
+La sección 7 cerró con la revisión 4 de `blacklist-devops-task` (`db6e990`) atendiendo en el grupo de
 destino azul. Esta sección documenta la ejecución en la que la integración continua terminó bien y el
 despliegue continuo falló: el contenedor de la versión nueva escucha en el puerto `8001`, mientras la
 definición de la tarea, el `appspec.yaml` y los grupos de destino esperan el `8000` (decisión 5 de la
@@ -794,7 +827,7 @@ hallazgos y capturas de los servicios de AWS.
 La ejecución es del **10 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
 Las horas están en UTC-05:00. No se creó infraestructura nueva. El cambio llegó a `dev` con el PR
 #258 y a `main` con la promoción #261, que además retiró la prueba que fallaba a propósito en la
-sección 5. El detalle completo, con los dos CSV del monitor de `/ping`, está en la carpeta
+sección 6. El detalle completo, con los dos CSV del monitor de `/ping`, está en la carpeta
 `docs/ci/entrega-3/` del repositorio.
 
 La ejecución **no salió como se había previsto**. CodeDeploy falló y revirtió solo, como se buscaba,
@@ -802,10 +835,10 @@ pero la configuración canaria no verificó la salud de la versión nueva antes 
 10 % de las solicitudes recibió errores 502 durante cinco minutos y, al pasar el resto, hubo unos 44 s
 sin servicio hasta la reversión. Los hallazgos 2 a 9 explican por qué y qué se corrigió.
 
-### 7.1 Configuración de CodeDeploy antes de la ejecución
+### 8.1 Configuración de CodeDeploy antes de la ejecución
 
 El grupo `blacklist-devops-dg` se creó con `CodeDeployDefault.ECSAllAtOnce` (decisión 2 de la 1.2).
-El hallazgo 4 de la sección 6 mostró que, sin *listener* de prueba, esa configuración no verifica la
+El hallazgo 4 de la sección 7 mostró que, sin *listener* de prueba, esa configuración no verifica la
 salud de la versión nueva antes de pasarle el tráfico. Por eso, el 9 de noviembre a las 23:56, el
 equipo cambió el grupo a `CodeDeployDefault.ECSCanary10Percent5Minutes`, que pasa el 10 % del tráfico
 durante 5 minutos y después el resto, con el supuesto de que la salud se verificaría antes de mover el
@@ -819,15 +852,15 @@ ante `DEPLOYMENT_FAILURE` no cambió.
 | *Listener* de prueba | No | No |
 | Permiso del rol de CodePipeline (`acceso-minimo-cd`) | `GetDeploymentConfig` sobre `ECSAllAtOnce` | Sobre las dos configuraciones |
 
-![Figura 7.1. Grupo de despliegue blacklist-devops-dg antes del cambio, con CodeDeployDefault.ECSAllAtOnce y la restauración habilitada](capturas/entrega-3/2.5-grupo-despliegue-antes.png)
+![Figura 8.1. Grupo de despliegue blacklist-devops-dg antes del cambio, con CodeDeployDefault.ECSAllAtOnce y la restauración habilitada](capturas/entrega-3/2.5-grupo-despliegue-antes.png)
 
-![Figura 7.2. El mismo grupo después del cambio, con CodeDeployDefault.ECSCanary10Percent5Minutes](capturas/entrega-3/2.5-grupo-despliegue-despues.png)
+![Figura 8.2. El mismo grupo después del cambio, con CodeDeployDefault.ECSCanary10Percent5Minutes](capturas/entrega-3/2.5-grupo-despliegue-despues.png)
 
-### 7.2 Resultado de la ejecución
+### 8.2 Resultado de la ejecución
 
 | Dato | Valor |
 |---|---|
-| Cambio | PR #258: Gunicorn en `:8001` en el `Dockerfile` y retiro de la prueba de la sección 5 |
+| Cambio | PR #258: Gunicorn en `:8001` en el `Dockerfile` y retiro de la prueba de la sección 6 |
 | Commit | `69e12b85c0671d077e92f040bcb6234e1c7d343c` (`69e12b8`), *merge commit* de la promoción #261 en `main`, 22:34:51 |
 | Disparador | `WebhookV2`, tipo `PUSH_BRANCH`, rama `main`, 3 s después del *merge* |
 | Ejecución | `035b42d2-3559-499c-8459-ad447b344612`, versión 5 del pipeline, **Failed** |
@@ -837,11 +870,11 @@ ante `DEPLOYMENT_FAILURE` no cambió.
 | Definición | `blacklist-devops-task:5`, registrada por la acción *Deploy* a las 22:39:10 con la imagen `69e12b8` |
 | Despliegue | `d-SYHBSF3HL`, `CodeDeployDefault.ECSCanary10Percent5Minutes`, **Failed** a las 22:46:40: `ECS_UPDATE_ERROR`, «CodeDeploy detected that the replacement task set is unhealthy.» |
 | Reversión | `d-2TNRGN3HL`, iniciada por CodeDeploy, **Succeeded** de 22:46:41 a 22:46:43 |
-| Servicio después | `blacklist-devops-task:4`, la misma tarea de la sección 6; el *listener* HTTP:80 reenvía de nuevo a `blacklist-devops-tg-azul` |
+| Servicio después | `blacklist-devops-task:4`, la misma tarea de la sección 7; el *listener* HTTP:80 reenvía de nuevo a `blacklist-devops-tg-azul` |
 | `GET /ping` | Cuando respondió, siempre `{"version": "db6e990"}`. **40 de 361 consultas con 502** mientras corrió la ejecución (monitor principal) |
 | Errores 502 en el balanceador | **77** entre las 22:41 y las 22:46 (CloudWatch, `HTTPCode_ELB_502_Count`) |
 
-### 7.3 Línea de tiempo y disponibilidad
+### 8.3 Línea de tiempo y disponibilidad
 
 | Hora | Evento |
 |---|---|
@@ -871,76 +904,76 @@ ante `DEPLOYMENT_FAILURE` no cambió.
 Cuando `/ping` respondió, siempre lo hizo con `db6e990`: la versión nueva nunca contestó. Ningún
 monitor registró errores después de las 22:46:53.
 
-### 7.4 Pipeline y build
+### 8.4 Pipeline y build
 
 La ejecución con *Source* y *Build* en verde y *Deploy* en rojo. El desencadenador es el commit
 `69e12b8` enviado a `main` con el mensaje de la promoción.
 
-![Figura 7.3. Ejecución 035b42d2 del pipeline: Source y Build en verde, Deploy en rojo, 11 min 59 s; el desencadenador es el commit 69e12b8 de la promoción](capturas/entrega-3/2.5-pipeline-ejecucion.png)
+![Figura 8.3. Ejecución 035b42d2 del pipeline: Source y Build en verde, Deploy en rojo, 11 min 59 s; el desencadenador es el commit 69e12b8 de la promoción](capturas/entrega-3/2.5-pipeline-ejecucion.png)
 
 Registro del build 30: cobertura del 100 % y `156 passed`, seguido de las validaciones y el inicio de
 sesión en ECR.
 
-![Figura 7.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 % y el inicio de sesión en ECR](capturas/entrega-3/2.5-build-pruebas.png)
+![Figura 8.4. Registro del build: 156 pruebas aprobadas con cobertura del 100 % y el inicio de sesión en ECR](capturas/entrega-3/2.5-build-pruebas.png)
 
 Envío a ECR: `latest` con el mismo *digest* que `69e12b8` y el artefacto con `imageDetail.json`,
 `taskdef.json` y `appspec.yaml`.
 
-![Figura 7.5. Fin del registro del build: envío de la imagen a ECR y artefacto con los tres archivos](capturas/entrega-3/2.5-build-envio-ecr.png)
+![Figura 8.5. Fin del registro del build: envío de la imagen a ECR y artefacto con los tres archivos](capturas/entrega-3/2.5-build-envio-ecr.png)
 
-![Figura 7.6. Repositorio blacklist-devops en ECR: la imagen 69e12b8, latest de las 22:38:50](capturas/entrega-3/2.5-ecr-imagen.png)
+![Figura 8.6. Repositorio blacklist-devops en ECR: la imagen 69e12b8, latest de las 22:38:50](capturas/entrega-3/2.5-ecr-imagen.png)
 
-### 7.5 Despliegue fallido y reversión
+### 8.5 Despliegue fallido y reversión
 
 `d-SYHBSF3HL` en *Error*, con la causa y la reversión `d-2TNRGN3HL` realizada correctamente.
 
-![Figura 7.7. Despliegue d-SYHBSF3HL en Error: CodeDeploy detected that the replacement task set is unhealthy, con la reversión d-2TNRGN3HL realizada](capturas/entrega-3/2.5-codedeploy-fallido.png)
+![Figura 8.7. Despliegue d-SYHBSF3HL en Error: CodeDeploy detected that the replacement task set is unhealthy, con la reversión d-2TNRGN3HL realizada](capturas/entrega-3/2.5-codedeploy-fallido.png)
 
 Estado del despliegue: el 100 % del tráfico se desvió al conjunto de sustitución y el paso de espera
 terminó en *Error*. La consola muestra el último estado del despliegue fallido, no lo que quedó
 corriendo, que es el conjunto original (hallazgo 8).
 
-![Figura 7.8. Pasos del despliegue fallido: el tráfico desviado al conjunto de sustitución y la espera en Error](capturas/entrega-3/2.5-codedeploy-pasos.png)
+![Figura 8.8. Pasos del despliegue fallido: el tráfico desviado al conjunto de sustitución y la espera en Error](capturas/entrega-3/2.5-codedeploy-pasos.png)
 
 Eventos del ciclo de vida: `Install` duró 1 min 42 s y `AllowTraffic`, exactamente los 5 minutos del
 canario. Ninguno falló: el despliegue falló después, en la espera.
 
-![Figura 7.9. Ciclo de vida de d-SYHBSF3HL: Install y AllowTraffic correctos; AllowTraffic de 22:40 a 22:45](capturas/entrega-3/2.5-codedeploy-ciclo-vida.png)
+![Figura 8.9. Ciclo de vida de d-SYHBSF3HL: Install y AllowTraffic correctos; AllowTraffic de 22:40 a 22:45](capturas/entrega-3/2.5-codedeploy-ciclo-vida.png)
 
 La reversión `d-2TNRGN3HL`, iniciada por CodeDeploy: el 100 % del tráfico vuelve al conjunto
 original y se termina el de sustitución.
 
-![Figura 7.10. Reversión automática d-2TNRGN3HL: el tráfico vuelve al conjunto original y se termina el de sustitución](capturas/entrega-3/2.5-codedeploy-reversion.png)
+![Figura 8.10. Reversión automática d-2TNRGN3HL: el tráfico vuelve al conjunto original y se termina el de sustitución](capturas/entrega-3/2.5-codedeploy-reversion.png)
 
-### 7.6 Tareas en mal estado y tráfico
+### 8.6 Tareas en mal estado y tráfico
 
 Eventos del servicio filtrados por *unhealthy*: el puerto 8000 de la tarea nueva no pasa la
 verificación de salud en `blacklist-devops-tg-verde` y ECS reemplaza la tarea tres veces. El grupo
 verde en mal estado ya no se podía capturar cuando terminó la ejecución; estos eventos son la
 evidencia.
 
-![Figura 7.11. Eventos de blacklist-devops-service: la tarea nueva unhealthy en blacklist-devops-tg-verde y reemplazada tres veces](capturas/entrega-3/2.5-ecs-eventos-unhealthy.png)
+![Figura 8.11. Eventos de blacklist-devops-service: la tarea nueva unhealthy en blacklist-devops-tg-verde y reemplazada tres veces](capturas/entrega-3/2.5-ecs-eventos-unhealthy.png)
 
 CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC):
 `HTTPCode_ELB_502_Count` sube desde las 22:41 y llega a 45 en el minuto de las 22:46;
 `RequestCount` se mantiene en unas 60 por minuto, las de los dos monitores.
 
-![Figura 7.12. CloudWatch del balanceador: errores 502 desde las 22:41 hasta 45 en el minuto de las 22:46, y solicitudes por minuto](capturas/entrega-3/2.5-cloudwatch-502.png)
+![Figura 8.12. CloudWatch del balanceador: errores 502 desde las 22:41 hasta 45 en el minuto de las 22:46, y solicitudes por minuto](capturas/entrega-3/2.5-cloudwatch-502.png)
 
 *Listener* HTTP:80 después de la reversión: reenvía el 100 % a `blacklist-devops-tg-azul`.
 
-![Figura 7.13. Listener HTTP:80 del balanceador después de la reversión, reenviando a blacklist-devops-tg-azul](capturas/entrega-3/2.5-alb-listener.png)
+![Figura 8.13. Listener HTTP:80 del balanceador después de la reversión, reenviando a blacklist-devops-tg-azul](capturas/entrega-3/2.5-alb-listener.png)
 
-### 7.7 Hallazgos
+### 8.7 Hallazgos
 
 1. **El CI terminó bien y el CD falló, como se buscaba.** Las 156 pruebas pasaron, la imagen
    `69e12b8` llegó a ECR y la etapa *Deploy* registró `blacklist-devops-task:5`. El contenedor
    arrancó, pero no atiende el puerto 8000, así que la versión nueva nunca respondió.
 2. **El canario no verificó la salud antes de pasar el tráfico.** ECS dio por estable el conjunto de
    sustitución 9 s después de registrar la tarea en `blacklist-devops-tg-verde`, igual que en la
-   sección 6. Mientras ese grupo no recibe tráfico, sus destinos quedan sin usar (`Target.NotInUse`)
+   sección 7. Mientras ese grupo no recibe tráfico, sus destinos quedan sin usar (`Target.NotInUse`)
    y el balanceador no los revisa. `Install` terminó bien y el canario pasó el 10 % a una versión que
-   no respondía. El cambio de configuración (7.1) suponía que las verificaciones correrían durante
+   no respondía. El cambio de configuración (8.1) suponía que las verificaciones correrían durante
    `Install`; esta ejecución lo desmintió para nuestra configuración, sin *listener* de prueba.
 3. **Con el 10 % del tráfico, parte de las solicitudes falló durante cinco minutos.** Desde las
    22:40:56 el balanceador envió una de cada diez solicitudes al grupo verde. La tarea nueva quedó en
@@ -953,7 +986,7 @@ CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC)
    después de pasar el 100 %, declaró fallido el despliegue con `ECS_UPDATE_ERROR` y la reversión
    automática `d-2TNRGN3HL` devolvió el tráfico al grupo azul en 2 s. La reversión fue posible porque
    la versión anterior seguía corriendo: el conjunto original solo se termina dos minutos después de
-   un despliegue exitoso. La tarea que atiende desde la sección 6 nunca se detuvo.
+   un despliegue exitoso. La tarea que atiende desde la sección 7 nunca se detuvo.
 6. **Hubo errores y un corte breve.** El monitor principal registró 40 errores en las 361 consultas
    hechas mientras corrió la ejecución (11 %); el de respaldo, 36; CloudWatch, 77 en total. El corte
    total duró unos 44 s, de las 22:46:10 a las 22:46:53.
@@ -976,15 +1009,15 @@ CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC)
    el canario deje de pasarle tráfico. Otras salidas son un *listener* de prueba o la reversión por alarmas de
    CloudWatch, que la decisión 3 de la 1.2 dejó para la Entrega 4.
 
-### 7.8 Cumplimiento del punto 3 del documento
+### 8.8 Cumplimiento del punto 3 del documento
 
 | Requisito del punto 3 (8 %) | Evidencia |
 |---|---|
-| Ejecución con CI exitoso: commit, build, pruebas e imagen en ECR | Secciones 7.2 a 7.4; figuras 7.3 a 7.6 |
-| CD fallido: causa y mensaje del fallo | Secciones 7.2, 7.5 y 7.6; figuras 7.7 a 7.11; hallazgos 1, 2 y 9 |
-| Reversión automática a la versión anterior | Sección 7.5; figuras 7.10 y 7.13; hallazgo 5 |
-| Disponibilidad durante el despliegue | Sección 7.3 y figura 7.12; hallazgos 3, 4 y 6 |
-| Hallazgos y capturas de los servicios de AWS | Secciones 7.1 a 7.7; trece figuras y nueve hallazgos |
+| Ejecución con CI exitoso: commit, build, pruebas e imagen en ECR | Secciones 8.2 a 8.4; figuras 8.3 a 8.6 |
+| CD fallido: causa y mensaje del fallo | Secciones 8.2, 8.5 y 8.6; figuras 8.7 a 8.11; hallazgos 1, 2 y 9 |
+| Reversión automática a la versión anterior | Sección 8.5; figuras 8.10 y 8.13; hallazgo 5 |
+| Disponibilidad durante el despliegue | Sección 8.3 y figura 8.12; hallazgos 3, 4 y 6 |
+| Hallazgos y capturas de los servicios de AWS | Secciones 8.1 a 8.7; trece figuras y nueve hallazgos |
 
 Con esta ejecución, el punto 3 del documento queda cubierto: el commit disparó el CI, el build
 ejecutó las 156 pruebas y publicó la imagen, y el despliegue de CodeDeploy falló y se revirtió solo a
@@ -992,6 +1025,6 @@ la versión anterior. La ejecución también mostró que la configuración canar
 de salud del contenedor, no evita que la versión nueva reciba tráfico: hubo errores durante cinco
 minutos y unos 44 s sin servicio, y la corrección se aplicó en la 2.6 (#210).
 
-## 8. Enlaces, decisiones y conclusiones
+## 9. Decisiones y conclusiones
 
 [PENDIENTE: tarea 3.7 (#217).]
