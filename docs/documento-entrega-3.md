@@ -89,9 +89,9 @@ el dominio y los scripts del equipo.
 | `GET /ping` | 200 | Sin token, solo con la versión y sin consultar la base | `test_ping_does_not_query_the_database` |
 
 Las pruebas usan SQLite en memoria por defecto (sin `DATABASE_URL`, como en el CI), así que no
-dependen de un servidor de base de datos ni de la red. La prueba local del contenedor de la 1.5 se
-hizo con SQLite por ese mismo motivo y porque la RDS es privada; la validación contra PostgreSQL
-corresponde a la 1.11 (#199).
+dependen de un servidor de base de datos ni de la red. La prueba local del contenedor se
+hizo con SQLite por ese mismo motivo y porque la RDS es privada; la validación contra PostgreSQL se
+hizo con el servicio de Fargate creado a mano (sección 4.5).
 
 ## 2. Arquitectura del CI/CD
 
@@ -101,12 +101,12 @@ la versión nueva en AWS ECS con Fargate mediante AWS CodeDeploy. Si la versión
 verificación de salud, CodeDeploy revierte solo a la versión anterior. A diferencia de la Entrega 2,
 nada es manual: el *merge* a `main` termina con la versión nueva atendiendo el tráfico.
 
-**Estado de esta sección.** Es el diseño aprobado en la 1.3 el 4 de noviembre de 2026, ya
-implementado: las tareas 1.6 a 1.16 crearon los recursos entre el 5 y el 8 de noviembre con los
-nombres de esta sección, y la sección 4 muestra su configuración real. Dos cosas cambiaron después,
+**Estado de esta sección.** Es el diseño del pipeline que el equipo aprobó el 4 de noviembre de
+2026, ya implementado: los recursos se crearon entre el 5 y el 8 de noviembre con los nombres de
+esta sección, y la sección 4 muestra su configuración real. Dos cosas cambiaron después,
 por lo que mostraron las ejecuciones: el paso del tráfico, de `CodeDeployDefault.ECSAllAtOnce` al
 canario, el 9 de noviembre (sección 8.1), y la verificación de salud del contenedor, agregada en la
-2.6 el 12 de noviembre (sección 8, hallazgo 9).
+versión final del 12 de noviembre (sección 8, hallazgo 9).
 
 ```
 Desarrollador
@@ -149,27 +149,27 @@ ALB blacklist-devops-alb (puerto 80) ──▶ tareas ──▶ RDS PostgreSQL b
 
 | Pieza | Recurso | Qué hace |
 |---|---|---|
-| Repositorio | GitHub, `misw-4304-blacklist-devops` | Guarda el código, las pruebas y los archivos de configuración (`Dockerfile`, `buildspec.yml`, `appspec.yaml` y `taskdef.json`). `main` es la rama estable y `dev` la de integración; las dos están protegidas: solo cambian por pull request aprobado. El repositorio es el privado de GitHub, conectado a CodePipeline y CodeBuild como en la Entrega 2 (decisión 1 de la 1.1, 3 de 4 votos; confirmada por el curso el 3 de noviembre de 2026: «lo deben entregar en GitHub»). La tarea 1.4 (#192) se cerró como no planeada |
+| Repositorio | GitHub, `misw-4304-blacklist-devops` | Guarda el código, las pruebas y los archivos de configuración (`Dockerfile`, `buildspec.yml`, `appspec.yaml` y `taskdef.json`). `main` es la rama estable y `dev` la de integración; las dos están protegidas: solo cambian por pull request aprobado. El repositorio es el privado de GitHub, conectado a CodePipeline y CodeBuild como en la Entrega 2 (decisión del equipo del 3 de noviembre de 2026, con 3 de 4 votos, confirmada por el curso ese mismo día: «lo deben entregar en GitHub»). No se usa AWS CodeCommit |
 | Conexión | `blacklist-devops-github` (AWS CodeConnections) | Autoriza a AWS a leer el repositorio mediante una aplicación de GitHub limitada a este repositorio, sin tokens personales ni llaves guardadas |
-| Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (el de la Entrega 2, con la etapa *Deploy* agregada en la 1.16) | Orquesta las tres etapas: *Source*, *Build* y *Deploy*. Con cada commit en `main` corren las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecuta nada en AWS (decisión 4 de la 1.1) |
-| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (el de la Entrega 2, con modo privilegiado desde la 1.14) | Ejecuta el `buildspec.yml`: instala las dependencias, corre las pruebas y, si pasan, construye la imagen y la envía a ECR. Si una prueba falla, el build termina en *Failed* y no hay imagen ni despliegue (sección 6) |
-| Imagen | Amazon ECR privado, `blacklist-devops` (1.7) | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
-| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde, el *listener* de producción del balanceador y el rol `blacklist-devops-codedeploy-role`. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte solo ante `DEPLOYMENT_FAILURE`. En la sección 8 lo declaró fallido 7 min 30 s después de crearlo. Sin alarmas de CloudWatch |
-| Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` (1.10 y 1.11) | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada y periodo de gracia de salud de 60 s. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000; desde la revisión 6 (2.6), con una verificación de salud del contenedor contra `/ping` cada 15 s |
-| Red | VPC por defecto con tres subredes públicas; ALB `blacklist-devops-alb` con los grupos de destino tipo IP `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` (1.9) | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200, cada 15 s. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
-| Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` (1.8) | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
-| Permisos | Cuatro roles de IAM (1.6): `blacklist-devops-ecs-execution-role` y `blacklist-devops-codedeploy-role` (nuevos); `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` (ampliados) | Ejecución de ECS (descargar la imagen, escribir registros y leer los dos parámetros), servicio de CodeDeploy para ECS, CodeBuild ampliado con envío a ECR y CodePipeline ampliado con CodeDeploy, ECS y `iam:PassRole` |
+| Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (el de la Entrega 2, con la etapa *Deploy* agregada) | Orquesta las tres etapas: *Source*, *Build* y *Deploy*. Con cada commit en `main` corren las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecuta nada en AWS (decisión del equipo del 3 de noviembre) |
+| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (el de la Entrega 2, ahora con modo privilegiado) | Ejecuta el `buildspec.yml`: instala las dependencias, corre las pruebas y, si pasan, construye la imagen y la envía a ECR. Si una prueba falla, el build termina en *Failed* y no hay imagen ni despliegue (sección 6) |
+| Imagen | Amazon ECR privado, `blacklist-devops` | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
+| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde, el *listener* de producción del balanceador y el rol `blacklist-devops-codedeploy-role`. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte solo ante `DEPLOYMENT_FAILURE`. En la sección 8 lo declaró fallido 7 min 30 s después de crearlo. Sin alarmas de CloudWatch |
+| Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada y periodo de gracia de salud de 60 s. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000; desde la revisión 6, con una verificación de salud del contenedor contra `/ping` cada 15 s |
+| Red | VPC por defecto con tres subredes públicas; ALB `blacklist-devops-alb` con los grupos de destino tipo IP `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200, cada 15 s. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
+| Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
+| Permisos | Cuatro roles de IAM: `blacklist-devops-ecs-execution-role` y `blacklist-devops-codedeploy-role` (nuevos); `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` (ampliados) | Ejecución de ECS (descargar la imagen, escribir registros y leer los dos parámetros), servicio de CodeDeploy para ECS, CodeBuild ampliado con envío a ECR y CodePipeline ampliado con CodeDeploy, ECS y `iam:PassRole` |
 | Registros | Amazon CloudWatch Logs | Guarda la salida de cada build y los registros del contenedor (`/ecs/blacklist-devops`, retención de 7 días) |
-| Base de datos | RDS PostgreSQL `blacklist-db` (se conserva de la Entrega 1) | Sigue sin acceso público; acepta el 5432 desde el grupo de las tareas de Fargate (1.9). Si cambia `JWT_SECRET_KEY`, hay que generar un token nuevo para Postman, como hasta ahora |
+| Base de datos | RDS PostgreSQL `blacklist-db` (se conserva de la Entrega 1) | Sigue sin acceso público; acepta el 5432 desde el grupo de las tareas de Fargate. Si cambia `JWT_SECRET_KEY`, hay que generar un token nuevo para Postman, como hasta ahora |
 
-Los nombres de esta tabla son los del diseño (1.3, sección 6) y coinciden con los recursos creados;
+Los nombres de esta tabla son los del documento de diseño del pipeline y coinciden con los recursos creados;
 la sección 4 muestra su configuración.
 
 **Cuándo se ejecuta.** Con cada *push* a `main`, sin filtro de rutas: todo commit en la rama
-principal inicia el pipeline y, si el CI pasa, despliega. Es la decisión 4 de la 1.1: el pipeline
+principal inicia el pipeline y, si el CI pasa, despliega. Es una decisión del equipo del 3 de noviembre: el pipeline
 pierde el disparador de pull requests de la Entrega 2, así que abrir o actualizar un PR no ejecuta
 nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una promoción `dev` →
-`main` que lleva una prueba que falla (decisión 4 de la 1.2).
+`main` que lleva una prueba que falla (decisión del equipo del 3 de noviembre).
 
 **Flujo de una ejecución:**
 
@@ -186,7 +186,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
    `CodeDeployDefault.ECSCanary10Percent5Minutes`: primero el 10 % durante 5 minutos y después el resto. Si la
    versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte a la versión anterior.
    En la sección 8, sin verificación de salud del contenedor, lo declaró fallido 7 min 30 s después de
-   crearlo y 43 s después de pasar el 100 % del tráfico; desde la 2.6, ECS solo da por estable una tarea
+   crearlo y 43 s después de pasar el 100 % del tráfico; desde la versión final (sección 8, hallazgo 9), ECS solo da por estable una tarea
    cuyo contenedor responde en `/ping`.
 7. `/ping` responde la etiqueta del commit desplegado, así que la versión que atiende se comprueba
    con una solicitud sin token.
@@ -200,7 +200,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 - **Subredes públicas con IP pública,** sin NAT gateway ni *endpoints* de VPC, que cobran por hora en
   el plan gratuito.
 - **Reversión automática sin alarmas de CloudWatch,** porque el criterio es la verificación de salud
-  en `/ping`: la del grupo de destino y, desde la 2.6, la del contenedor.
+  en `/ping`: la del grupo de destino y, desde la versión final, la del contenedor.
 - **La etiqueta de la imagen es el commit** (igual que el `.zip` de la Entrega 2), así `/ping`
   demuestra qué versión atiende.
 - **Un solo *listener* de producción en el puerto 80,** sin *listener* de prueba: HTTP como en
@@ -219,8 +219,8 @@ encienden mientras se trabaja y se graba, como en las entregas anteriores.
 | URL del servicio (balanceador de AWS Fargate) | http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación (SharePoint de la Universidad) | [PENDIENTE: tarea 4.5 (#225).] |
-| Video de sustentación (YouTube) | [PENDIENTE: tarea 4.5 (#225).] |
+| Video de sustentación (SharePoint de la Universidad) | [PENDIENTE: enlace del video publicado.] |
+| Video de sustentación (YouTube) | [PENDIENTE: enlace del video publicado.] |
 
 Notas aclaratorias:
 
@@ -235,7 +235,7 @@ Notas aclaratorias:
   calificación. La raíz de la URL responde 404 porque el API no define esa ruta; `/ping` responde con la
   versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
   secciones 6 a 8.
-  [PENDIENTE: estado final del balanceador y del servicio después de la grabación, tarea 4.7 (#227).]
+  [PENDIENTE: estado final del balanceador y del servicio después de la grabación.]
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 - **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
@@ -269,7 +269,7 @@ azul/verde, y la 5 es un CI fallido, sin despliegue.
 |---|---|---|---|
 | 1 | Repositorio de Amazon ECR | `blacklist-devops` | Nada |
 | 2 | Parámetros de Parameter Store | `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` | La RDS de la Entrega 1 |
-| 3 | Roles de IAM | `blacklist-devops-ecs-execution-role` y los de CodeDeploy, CodeBuild y CodePipeline | La 1.6 |
+| 3 | Roles de IAM | `blacklist-devops-ecs-execution-role` y los de CodeDeploy, CodeBuild y CodePipeline | El bucket de artefactos y la conexión con GitHub de la Entrega 2 |
 | 4 | Grupos de seguridad y de destino | `blacklist-devops-alb-sg`, `blacklist-devops-tareas-sg`, `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` | La VPC por defecto y la RDS |
 | 5 | Balanceador de aplicaciones | `blacklist-devops-alb` | Los grupos de seguridad y de destino |
 | 6 | Grupo de registros | `/ecs/blacklist-devops` | Nada |
@@ -337,7 +337,7 @@ costo de métricas.
 
 La definición usa el mínimo de Fargate, 256 (0,25 vCPU) y 512 MB, y alcanzó: la tarea arrancó a la
 primera y se mantuvo estable durante la validación. El contenedor escucha en el 8000, el mismo puerto
-del `Dockerfile` y de los grupos de destino. La imagen es la de la 1.7 con la etiqueta del commit.
+del `Dockerfile` y de los grupos de destino. La imagen es la del repositorio de ECR (sección 4.2) con la etiqueta del commit.
 `APP_ENV=production` va en `environment` porque no es un secreto; `PROXY_FIX_X_FOR` no se define
 porque su valor por defecto, `1`, corresponde a un solo intermediario delante de la aplicación, el
 balanceador.
@@ -345,7 +345,7 @@ balanceador.
 ![Figura 4.3. Definición blacklist-devops-task:1 activa, Fargate y con el rol de ejecución](capturas/entrega-3/1.10-tarea-detalle.png)
 
 `DATABASE_URL` y `JWT_SECRET_KEY` no están en la definición: aparecen en `secrets` como referencias a
-los parámetros `SecureString` de la 1.8, y solo el rol de ejecución puede leerlos. La definición no
+los parámetros `SecureString` de Parameter Store, y solo el rol de ejecución puede leerlos. La definición no
 contiene ningún valor.
 
 ![Figura 4.4. Parámetros de Parameter Store: los dos nombres, tipo SecureString y nivel Standard](capturas/entrega-3/1.8-parametros-lista.png)
@@ -489,7 +489,7 @@ commit y CodeDeploy mueve el tráfico sin intervención. Las secciones 6 a 8 doc
 
 ## 5. Archivos de configuración y pipeline
 
-[PENDIENTE: tarea 3.3 (#213).]
+[PENDIENTE: archivos de configuración y pipeline.]
 
 ## 6. Pipeline de CI fallido
 
@@ -497,7 +497,7 @@ La sección 5 documenta los archivos de configuración y el pipeline; esta secci
 ejecución que falló en la integración continua, el punto 1 del documento del enunciado (4 %). Es la
 ejecución `e363652d`, disparada por el *merge* de la promoción #254 en `main` con una prueba que
 falla a propósito. El *build* se detuvo en las pruebas: no se construyó ni se envió la imagen y no
-hubo despliegue. El servicio de Fargate siguió con la versión que dejó la 2.3, `db6e990`.
+hubo despliegue. El servicio de Fargate siguió con la versión que dejó el CI y CD exitosos de la sección 7, `db6e990`.
 
 La ejecución es del **9 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
 Las horas están en UTC-05:00. No se creó infraestructura nueva: se usaron el clúster, el servicio, el
@@ -524,7 +524,7 @@ manual.
 | Servicio | Sin cambios: `blacklist-devops-task:4`, 1 tarea en `blacklist-devops-tg-azul` y 1 destino sano; no se registró otra revisión |
 | `GET /ping` | `{"version": "db6e990"}` en las 360 consultas del monitor, de 22:57:39 a 23:09:37 |
 
-La suite base tiene 156 pruebas; la ejecución de la 2.4 corre 157 porque suma la prueba que falla a
+La suite base tiene 156 pruebas; esta ejecución corre 157 porque suma la prueba que falla a
 propósito. De las 157, 156 pasan y una falla, que es el resultado esperado de esta prueba.
 
 ### 6.2 Línea de tiempo
@@ -532,7 +532,7 @@ propósito. De las 157, 156 pasan y una falla, que es el resultado esperado de e
 | Hora | Evento |
 |---|---|
 | 22:11:02 | Se fusiona el PR #253 en `dev` (*squash* `41306da`): agrega la prueba que falla |
-| 22:31:19 | Se fusiona el PR #255 (3.5) en `dev` (`b899b0e`); la promoción pierde la aprobación porque `protect-main` exige aprobar el último *push*, y se vuelve a aprobar a las 22:46 |
+| 22:31:19 | Se fusiona en `dev` el PR #255 (`b899b0e`), con la documentación del CI y CD exitosos; la promoción pierde la aprobación porque `protect-main` exige aprobar el último *push*, y se vuelve a aprobar a las 22:46 |
 | 22:57:39 | Empieza el monitor de `/ping`, una consulta cada 2 s |
 | 22:58:01 | Se fusiona la promoción #254 en `main` (*merge commit* `299125d`) |
 | 22:58:06 | Inicia la ejecución `e363652d`, 5 s después del *push* |
@@ -557,7 +557,7 @@ de error de `pytest`.
 
 ![Figura 6.1. Ejecución e363652d del pipeline: Source en verde, Build en rojo y Deploy con «No se ejecutó»; el desencadenador es el commit 299125d de la promoción](capturas/entrega-3/2.4-pipeline-ejecucion.png)
 
-Historial: la ejecución `e363652d` en *Error* sobre la `31b06edb` de la 2.3; las dos se iniciaron con
+Historial: la ejecución `e363652d` en *Error* sobre la `31b06edb` del CI y CD exitosos (sección 7); las dos se iniciaron con
 un commit en `main`.
 
 ![Figura 6.2. Historial de ejecuciones: e363652d en Error sobre 31b06edb; las dos se iniciaron con un commit en main](capturas/entrega-3/2.4-pipeline-historial.png)
@@ -587,7 +587,7 @@ sigue siendo `latest, db6e990`, del 9 de noviembre a las 18:03:11.
 
 ![Figura 6.6. Repositorio blacklist-devops en ECR: cinco imágenes y ninguna con la etiqueta 299125d; la más reciente sigue siendo latest, db6e990](capturas/entrega-3/2.4-ecr-imagenes.png)
 
-Historial de CodeDeploy: solo los despliegues de la 1.16 (`d-TEOBBBNFL`) y de la 2.3 (`d-UKCBNTBGL`).
+Historial de CodeDeploy: solo el de la ejecución manual que comprobó la etapa *Deploy* el 8 de noviembre (`d-TEOBBBNFL`) y el del CI y CD exitosos (`d-UKCBNTBGL`).
 La etapa *Deploy* no se ejecutó, así que la acción *Deploy* no registró ninguna revisión nueva y
 CodeDeploy no creó ningún despliegue. El historial muestra las dos entradas como «Acción del usuario»,
 el nombre que da CodeDeploy a los despliegues creados por una llamada a su API, incluidos los de la
@@ -606,8 +606,8 @@ ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
    `BUILD`: al salir con código 1, CodeBuild marca la fase como fallida y no ejecuta los comandos
    siguientes (validaciones, inicio de sesión en ECR y `docker build`). El pipeline no pasa a
    *Deploy*, así que la acción *Deploy* no registra una revisión nueva, CodeDeploy no crea un
-   despliegue y Fargate sigue con la versión anterior. Es el comportamiento que fijó la decisión 4 de
-   la 1.2.
+   despliegue y Fargate sigue con la versión anterior. Es el comportamiento que fijó la decisión del
+   equipo del 3 de noviembre.
 2. **`POST_BUILD` se ejecuta aunque el build ya haya fallado.** CodeBuild corre siempre esa fase; lo
    que impide el envío es la condición `CODEBUILD_BUILD_SUCCEEDING = 1` del `buildspec.yml`, no el
    `set -e`. La fase termina en *Succeeded* sin ejecutar ningún `docker push`. El `set -e` solo hace
@@ -624,10 +624,10 @@ ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
    (`31b06edb`). La vista de la ejecución `e363652d` es la que dice «No se ejecutó».
 6. **El fallo se conoce en unos 3 minutos.** La ejecución duró 3 min 42 s, y `INSTALL` ocupó 178 s del
    build porque `pyenv` compila Python 3.13.16 en cada ejecución. Las pruebas fallaron en 2 s. El CI
-   fallido de la Entrega 2 (2.9, #113) duró 38 s porque su build no instalaba Python ni construía
+   fallido de la Entrega 2 duró 38 s porque su build no instalaba Python ni construía
    imágenes.
-7. **`main` queda con el CI en rojo hasta la 2.5.** Mientras la prueba siga en `main`, cualquier
-   promoción fallaría igual. La 2.5 (#209) la retira en la misma promoción que provoca el CD fallido;
+7. **`main` queda con el CI en rojo hasta el CD fallido.** Mientras la prueba siga en `main`, cualquier
+   promoción fallaría igual. La promoción que provoca el CD fallido (sección 8) la retira;
    hasta entonces no se promueve nada más a `main`.
 
 ### 6.6 Cumplimiento del punto 1 del documento
@@ -766,7 +766,7 @@ documentan en la sección 8.
 ### 7.5 Hallazgos
 
 1. **El commit en `main` dispara el pipeline completo.** La ejecución inició 3 s después del *merge*,
-   con el disparador `WebhookV2` y `PUSH_BRANCH` sobre `main`. La 1.16 se había comprobado con una
+   con el disparador `WebhookV2` y `PUSH_BRANCH` sobre `main`. La etapa *Deploy* se había comprobado el 8 de noviembre con una
    ejecución manual (`6ff261a0`, iniciada con `StartPipelineExecution`); esta es la primera que inicia
    sola un commit.
 2. **El despliegue depende del CI.** *Deploy* empezó 1 s después de que terminó *Build*. Las pruebas
@@ -788,8 +788,8 @@ documentan en la sección 8.
    la prueba del CD fallido (sección 8) el grupo de despliegue usa
    `CodeDeployDefault.ECSCanary10Percent5Minutes` (votación del equipo del 10 de noviembre). Esa
    prueba mostró que el canario tampoco verifica la salud antes del primer 10 % del tráfico; la
-   corrección es la verificación de salud del contenedor de la 2.6 (#210).
-5. **Los grupos de destino se alternan.** El despliegue de la 1.16 dejó el tráfico en el grupo verde;
+   corrección es la verificación de salud del contenedor de la versión final (sección 8, hallazgo 9).
+5. **Los grupos de destino se alternan.** El despliegue de la ejecución manual del 8 de noviembre dejó el tráfico en el grupo verde;
    este lo pasó al azul. El siguiente despliegue usará el verde.
 6. **La instalación de Python ocupa casi todo el build.** `INSTALL` tardó 172 s, porque `pyenv`
    compila Python 3.13.16 en cada ejecución. Las pruebas tardaron menos de 1 s y el `docker build` y
@@ -820,8 +820,8 @@ en las secciones 6 y 8.
 La sección 7 cerró con la revisión 4 de `blacklist-devops-task` (`db6e990`) atendiendo en el grupo de
 destino azul. Esta sección documenta la ejecución en la que la integración continua terminó bien y el
 despliegue continuo falló: el contenedor de la versión nueva escucha en el puerto `8001`, mientras la
-definición de la tarea, el `appspec.yaml` y los grupos de destino esperan el `8000` (decisión 5 de la
-1.2). Es el punto 3 del documento del enunciado (8 %): un CI exitoso seguido de un CD fallido, con
+definición de la tarea, el `appspec.yaml` y los grupos de destino esperan el `8000` (decisión del equipo
+del 3 de noviembre). Es el punto 3 del documento del enunciado (8 %): un CI exitoso seguido de un CD fallido, con
 hallazgos y capturas de los servicios de AWS.
 
 La ejecución es del **10 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
@@ -837,7 +837,7 @@ sin servicio hasta la reversión. Los hallazgos 2 a 9 explican por qué y qué s
 
 ### 8.1 Configuración de CodeDeploy antes de la ejecución
 
-El grupo `blacklist-devops-dg` se creó con `CodeDeployDefault.ECSAllAtOnce` (decisión 2 de la 1.2).
+El grupo `blacklist-devops-dg` se creó con `CodeDeployDefault.ECSAllAtOnce` (decisión del equipo del 4 de noviembre).
 El hallazgo 4 de la sección 7 mostró que, sin *listener* de prueba, esa configuración no verifica la
 salud de la versión nueva antes de pasarle el tráfico. Por eso, el 9 de noviembre a las 23:56, el
 equipo cambió el grupo a `CodeDeployDefault.ECSCanary10Percent5Minutes`, que pasa el 10 % del tráfico
@@ -845,7 +845,7 @@ durante 5 minutos y después el resto, con el supuesto de que la salud se verifi
 tráfico. El rol de CodePipeline recibió el permiso de leer esa configuración. La reversión automática
 ante `DEPLOYMENT_FAILURE` no cambió.
 
-| Aspecto | Antes (1.15) | Desde el 9 de noviembre |
+| Aspecto | Antes (configuración inicial) | Desde el 9 de noviembre |
 |---|---|---|
 | Paso del tráfico | `CodeDeployDefault.ECSAllAtOnce`: el 100 % de una vez | `CodeDeployDefault.ECSCanary10Percent5Minutes`: 10 % durante 5 minutos y después el resto |
 | Reversión | Automática ante `DEPLOYMENT_FAILURE` | Sin cambios |
@@ -1001,13 +1001,13 @@ CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC)
 9. **Causa y corrección: faltaba una verificación de salud del contenedor.** ECS solo sabía que la
    tarea estaba sana por el balanceador, y el balanceador no la revisa hasta que recibe tráfico. El
    equipo votó agregar una verificación de salud del contenedor en `taskdef.json` (`healthCheck`
-   contra `/ping` en `localhost:8000`) en la ejecución que devuelve el puerto a `8000` (2.6, #210),
+   contra `/ping` en `localhost:8000`) en la ejecución que devuelve el puerto a `8000`, la versión final del 12 de noviembre,
    para que ECS no dé por estable una tarea que no responde.
-   En la 2.6, con esa verificación, ECS dio la tarea por estable 18 s después de registrarla, con el
+   En esa ejecución, con la verificación, ECS dio la tarea por estable 18 s después de registrarla, con el
    contenedor *Healthy*, y el despliegue terminó sin errores: las 726 consultas del monitor
    respondieron 200 y el balanceador no registró errores 5XX. No se volvió a desplegar una versión que no responda, así que no queda probado que
    el canario deje de pasarle tráfico. Otras salidas son un *listener* de prueba o la reversión por alarmas de
-   CloudWatch, que la decisión 3 de la 1.2 dejó para la Entrega 4.
+   CloudWatch, que el equipo dejó para la Entrega 4 (decisión del 4 de noviembre).
 
 ### 8.8 Cumplimiento del punto 3 del documento
 
@@ -1023,8 +1023,8 @@ Con esta ejecución, el punto 3 del documento queda cubierto: el commit disparó
 ejecutó las 156 pruebas y publicó la imagen, y el despliegue de CodeDeploy falló y se revirtió solo a
 la versión anterior. La ejecución también mostró que la configuración canaria, sin una verificación
 de salud del contenedor, no evita que la versión nueva reciba tráfico: hubo errores durante cinco
-minutos y unos 44 s sin servicio, y la corrección se aplicó en la 2.6 (#210).
+minutos y unos 44 s sin servicio, y la corrección se aplicó en la versión final del 12 de noviembre.
 
 ## 9. Decisiones y conclusiones
 
-[PENDIENTE: tarea 3.7 (#217).]
+[PENDIENTE: decisiones y conclusiones.]
