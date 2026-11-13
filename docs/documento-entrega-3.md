@@ -100,12 +100,12 @@ la versión nueva en AWS ECS con Fargate mediante AWS CodeDeploy. Si la versión
 verificación de salud, CodeDeploy revierte solo a la versión anterior. A diferencia de la Entrega 2,
 nada es manual: el *merge* a `main` termina con la versión nueva atendiendo el tráfico.
 
-**Estado de esta sección.** Es el diseño aprobado en la 1.3 el 4 de noviembre de 2026. Al 5 de
-noviembre la infraestructura todavía no está creada: en `us-east-2` hay 0 repositorios en ECR, 0
-clústeres y 0 servicios de ECS, 0 definiciones de tarea, 0 grupos de destino, 0 aplicaciones de
-CodeDeploy, 0 balanceadores y 0 parámetros, y el pipeline es aún el de la Entrega 2 (dos etapas, con
-disparador de *pull requests* y sin modo privilegiado). Las tareas 1.6 a 1.16 lo implementan y la
-sección 3 lo confirma con la configuración real.
+**Estado de esta sección.** Es el diseño aprobado en la 1.3 el 4 de noviembre de 2026, ya
+implementado: las tareas 1.6 a 1.16 crearon los recursos entre el 5 y el 8 de noviembre con los
+nombres de esta sección, y la sección 3 muestra su configuración real. Dos cosas cambiaron después,
+por lo que mostraron las ejecuciones: el paso del tráfico, de `CodeDeployDefault.ECSAllAtOnce` al
+canario, el 9 de noviembre (sección 7.1), y la verificación de salud del contenedor, agregada en la
+2.6 el 12 de noviembre (sección 7, hallazgo 9).
 
 ```
 Desarrollador
@@ -119,7 +119,7 @@ AWS CodePipeline V2 · blacklist-devops-ci-pipeline
      ▼
      │  Etapa Construcción
      ▼
-AWS CodeBuild · blacklist-devops-ci-build (buildspec.yml, con modo privilegiado desde la 1.14)
+AWS CodeBuild · blacklist-devops-ci-build (buildspec.yml, con modo privilegiado)
      │  1. Instala las dependencias (requirements-dev.txt)
      │  2. Ejecuta las pruebas con pytest ──── una falla ──▶ build Failed: sin imagen y sin despliegue
      │  3. Construye la imagen con la etiqueta del commit (<commit> y latest)
@@ -139,6 +139,7 @@ AWS CodeDeploy · blacklist-devops-app / blacklist-devops-dg
      ▼
 Amazon ECS · Fargate · blacklist-devops-cluster / blacklist-devops-service
      │  1 tarea de 0,25 vCPU y 0,5 GB · contenedor blacklist-devops en el puerto 8000
+     │  Verificación de salud del contenedor contra /ping (desde la revisión 6)
      │  DATABASE_URL y JWT_SECRET_KEY leídos de Parameter Store (referencias, sin valores)
      │  Registros en CloudWatch Logs (/ecs/blacklist-devops)
      ▼
@@ -147,25 +148,25 @@ ALB blacklist-devops-alb (puerto 80) ──▶ tareas ──▶ RDS PostgreSQL b
 
 | Pieza | Recurso | Qué hace |
 |---|---|---|
-| Repositorio | GitHub, `misw-4304-blacklist-devops` | Guarda el código, las pruebas y los archivos de configuración (`Dockerfile` y `buildspec.yml`; `appspec.yaml` y `taskdef.json` llegan en la 1.13). `main` es la rama estable y `dev` la de integración; las dos están protegidas: solo cambian por pull request aprobado. El repositorio es el privado de GitHub, conectado a CodePipeline y CodeBuild como en la Entrega 2 (decisión 1 de la 1.1, 3 de 4 votos; confirmada por el curso el 3 de noviembre de 2026: «lo deben entregar en GitHub»). La tarea 1.4 (#192) se cerró como no planeada |
+| Repositorio | GitHub, `misw-4304-blacklist-devops` | Guarda el código, las pruebas y los archivos de configuración (`Dockerfile`, `buildspec.yml`, `appspec.yaml` y `taskdef.json`). `main` es la rama estable y `dev` la de integración; las dos están protegidas: solo cambian por pull request aprobado. El repositorio es el privado de GitHub, conectado a CodePipeline y CodeBuild como en la Entrega 2 (decisión 1 de la 1.1, 3 de 4 votos; confirmada por el curso el 3 de noviembre de 2026: «lo deben entregar en GitHub»). La tarea 1.4 (#192) se cerró como no planeada |
 | Conexión | `blacklist-devops-github` (AWS CodeConnections) | Autoriza a AWS a leer el repositorio mediante una aplicación de GitHub limitada a este repositorio, sin tokens personales ni llaves guardadas |
-| Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (existe, cambia en la 1.16) | Orquestará las tres etapas: Origen, Construcción y Despliegue. Con cada commit en `main` correrán las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecutará nada en AWS (decisión 4 de la 1.1) |
-| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (existe, cambia en la 1.14) | Ejecutará el `buildspec.yml` con modo privilegiado: instalará las dependencias, correrá las pruebas y, si pasan, construirá la imagen y la enviará a ECR. Si una prueba falla, el build terminará en *Failed* y no habrá imagen ni despliegue |
-| Imagen | Amazon ECR privado, `blacklist-devops` (propuesta, 1.7) | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
-| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (propuesta, 1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde y el *listener* de producción del balanceador. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte (sección 7). Sin alarmas de CloudWatch |
-| Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` (propuesta, 1.10 y 1.11) | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000 |
-| Red | VPC por defecto con subredes públicas; ALB `blacklist-devops-alb` con dos grupos de destino tipo IP (propuesta, 1.9) | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
-| Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` (propuesta, 1.8) | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
-| Permisos | Cuatro roles de IAM (dos nuevos y dos ampliados, 1.6) | Ejecución de ECS (descargar la imagen, escribir registros y leer los dos parámetros), servicio de CodeDeploy para ECS, CodeBuild ampliado con envío a ECR y CodePipeline ampliado con CodeDeploy, ECS y `iam:PassRole` |
+| Pipeline | AWS CodePipeline V2, `blacklist-devops-ci-pipeline` (el de la Entrega 2, con la etapa *Deploy* agregada en la 1.16) | Orquesta las tres etapas: *Source*, *Build* y *Deploy*. Con cada commit en `main` corren las pruebas, la imagen, el envío a ECR y el despliegue. Abrir o actualizar un pull request no ejecuta nada en AWS (decisión 4 de la 1.1) |
+| Construcción | AWS CodeBuild, `blacklist-devops-ci-build` (el de la Entrega 2, con modo privilegiado desde la 1.14) | Ejecuta el `buildspec.yml`: instala las dependencias, corre las pruebas y, si pasan, construye la imagen y la envía a ECR. Si una prueba falla, el build termina en *Failed* y no hay imagen ni despliegue (sección 5) |
+| Imagen | Amazon ECR privado, `blacklist-devops` (1.7) | Guarda cada imagen con dos etiquetas: los siete primeros caracteres del commit y `latest`. Una política de ciclo de vida conserva las últimas 10 imágenes |
+| Despliegue | AWS CodeDeploy, `blacklist-devops-app` / `blacklist-devops-dg` (1.15) | Despliegue azul/verde sobre el servicio de ECS, con los grupos de destino azul y verde, el *listener* de producción del balanceador y el rol `blacklist-devops-codedeploy-role`. Configuración vigente `CodeDeployDefault.ECSCanary10Percent5Minutes` (hasta el 9 de noviembre fue `CodeDeployDefault.ECSAllAtOnce`): pasa el 10 % del tráfico durante 5 minutos y después el resto; si la versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte solo ante `DEPLOYMENT_FAILURE`. En la sección 7 lo declaró fallido 7 min 30 s después de crearlo. Sin alarmas de CloudWatch |
+| Cómputo | Amazon ECS con Fargate, `blacklist-devops-cluster` / `blacklist-devops-service` (1.10 y 1.11) | Servicio con controlador de despliegue `CODE_DEPLOY`, una tarea con IP pública asignada y periodo de gracia de salud de 60 s. Definición `blacklist-devops-task` (0,25 vCPU y 0,5 GB) y contenedor `blacklist-devops` en el puerto 8000; desde la revisión 6 (2.6), con una verificación de salud del contenedor contra `/ping` cada 15 s |
+| Red | VPC por defecto con tres subredes públicas; ALB `blacklist-devops-alb` con los grupos de destino tipo IP `blacklist-devops-tg-azul` y `blacklist-devops-tg-verde` (1.9) | El balanceador atiende el puerto 80 y comprueba la salud en `/ping` con código 200, cada 15 s. El grupo de las tareas solo acepta el 8000 desde el grupo del balanceador; el de la base solo acepta el 5432 desde el grupo de las tareas. Sin NAT gateway ni *endpoints* de VPC |
+| Secretos | Parameter Store, `/blacklist-devops/DATABASE_URL` y `/blacklist-devops/JWT_SECRET_KEY` (1.8) | Parámetros `SecureString` de nivel estándar. La definición de la tarea los referencia en `secrets`; el archivo no contiene ningún valor |
+| Permisos | Cuatro roles de IAM (1.6): `blacklist-devops-ecs-execution-role` y `blacklist-devops-codedeploy-role` (nuevos); `blacklist-devops-codebuild-role` y `blacklist-devops-codepipeline-role` (ampliados) | Ejecución de ECS (descargar la imagen, escribir registros y leer los dos parámetros), servicio de CodeDeploy para ECS, CodeBuild ampliado con envío a ECR y CodePipeline ampliado con CodeDeploy, ECS y `iam:PassRole` |
 | Registros | Amazon CloudWatch Logs | Guarda la salida de cada build y los registros del contenedor (`/ecs/blacklist-devops`, retención de 7 días) |
-| Base de datos | RDS PostgreSQL `blacklist-db` (se conserva de la Entrega 1) | Sigue sin acceso público; recibirá conexiones solo desde las tareas de Fargate (1.9). Si cambia `JWT_SECRET_KEY`, hay que generar un token nuevo para Postman, como hasta ahora |
+| Base de datos | RDS PostgreSQL `blacklist-db` (se conserva de la Entrega 1) | Sigue sin acceso público; acepta el 5432 desde el grupo de las tareas de Fargate (1.9). Si cambia `JWT_SECRET_KEY`, hay que generar un token nuevo para Postman, como hasta ahora |
 
-Todos los nombres de esta tabla son propuesta del diseño (1.3, sección 6), salvo los que ya existen
-y se indican como tal; la sección 3 los confirma al crearse.
+Los nombres de esta tabla son los del diseño (1.3, sección 6) y coinciden con los recursos creados;
+la sección 3 muestra su configuración.
 
 **Cuándo se ejecuta.** Con cada *push* a `main`, sin filtro de rutas: todo commit en la rama
 principal inicia el pipeline y, si el CI pasa, despliega. Es la decisión 4 de la 1.1: el pipeline
-pierde el disparador de pull requests de la Entrega 2, así que abrir o actualizar un PR no ejecutará
+pierde el disparador de pull requests de la Entrega 2, así que abrir o actualizar un PR no ejecuta
 nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una promoción `dev` →
 `main` que lleva una prueba que falla (decisión 4 de la 1.2).
 
@@ -183,6 +184,9 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
    nueva; CodeDeploy levanta la versión nueva en el otro grupo de destino y traslada el tráfico con
    `CodeDeployDefault.ECSCanary10Percent5Minutes`: primero el 10 % durante 5 minutos y después el resto. Si la
    versión nueva queda en mal estado, CodeDeploy marca el despliegue como fallido y revierte a la versión anterior.
+   En la sección 7, sin verificación de salud del contenedor, lo declaró fallido 7 min 30 s después de
+   crearlo y 43 s después de pasar el 100 % del tráfico; desde la 2.6, ECS solo da por estable una tarea
+   cuyo contenedor responde en `/ping`.
 7. `/ping` responde la etiqueta del commit desplegado, así que la versión que atiende se comprueba
    con una solicitud sin token.
 
@@ -195,7 +199,7 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 - **Subredes públicas con IP pública,** sin NAT gateway ni *endpoints* de VPC, que cobran por hora en
   el plan gratuito.
 - **Reversión automática sin alarmas de CloudWatch,** porque el criterio es la verificación de salud
-  en `/ping`.
+  en `/ping`: la del grupo de destino y, desde la 2.6, la del contenedor.
 - **La etiqueta de la imagen es el commit** (igual que el `.zip` de la Entrega 2), así `/ping`
   demuestra qué versión atiende.
 - **Un solo *listener* de producción en el puerto 80,** sin *listener* de prueba: HTTP como en
@@ -205,10 +209,6 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 direcciones IPv4; cerca de 1,5 USD por día sin la RDS, precios de `us-east-2` consultados el 4 de
 noviembre). El balanceador cobra aunque el servicio esté en cero tareas, así que los recursos solo se
 encienden mientras se trabaja y se graba, como en las entregas anteriores.
-
-[PENDIENTE: confirmar esta sección con la configuración real de la 1.6 a la 1.16 (#194–#204), en
-particular los nombres de ECR, ECS, CodeDeploy, el balanceador y los parámetros, y el tiempo que
-CodeDeploy tarda en declarar fallido el despliegue.]
 
 ## 3. Configuración del despliegue en Fargate
 
@@ -221,8 +221,8 @@ de seguridad y de destino el 5, el balanceador el 7 a las 13:44, el grupo de reg
 el 8, la definición de la tarea el 8 a las 14:52:21 y el servicio el 8 a las 15:10:36 (UTC-05:00).
 La configuración se hizo desde la consola de AWS y con la AWS CLI en AWS CloudShell: la consola para
 el repositorio, los parámetros, la red y el balanceador; la CLI para el clúster, la definición, el
-servicio y la validación. Los nombres de ECR, ECS, el balanceador y los parámetros que la sección 2
-anunciaba como propuesta quedan confirmados aquí; los de CodeDeploy quedan para la sección 4.
+servicio y la validación. Los nombres de ECR, ECS, el balanceador y los parámetros de la sección 2 son
+los de esta configuración; los de CodeDeploy aparecen en las secciones 6 y 7.
 
 El clúster, el servicio, el balanceador, los grupos de seguridad, el repositorio y los parámetros son
 los mismos que usa el pipeline. Lo que cambia en cada despliegue es la revisión de la definición de
@@ -794,8 +794,8 @@ hallazgos y capturas de los servicios de AWS.
 La ejecución es del **10 de noviembre de 2026**, en la cuenta del proyecto y la región `us-east-2`.
 Las horas están en UTC-05:00. No se creó infraestructura nueva. El cambio llegó a `dev` con el PR
 #258 y a `main` con la promoción #261, que además retiró la prueba que fallaba a propósito en la
-sección 5. El detalle completo, con los dos CSV del monitor de `/ping`, está en
-`docs/ci/entrega-3/2.5-cd-fallido.md`.
+sección 5. El detalle completo, con los dos CSV del monitor de `/ping`, está en la carpeta
+`docs/ci/entrega-3/` del repositorio.
 
 La ejecución **no salió como se había previsto**. CodeDeploy falló y revirtió solo, como se buscaba,
 pero la configuración canaria no verificó la salud de la versión nueva antes de pasarle tráfico: el
@@ -971,8 +971,8 @@ CloudWatch del balanceador, de 22:36 a 22:52 (en la gráfica, 03:36 a 03:52 UTC)
    contra `/ping` en `localhost:8000`) en la ejecución que devuelve el puerto a `8000` (2.6, #210),
    para que ECS no dé por estable una tarea que no responde.
    En la 2.6, con esa verificación, ECS dio la tarea por estable 18 s después de registrarla, con el
-   contenedor *Healthy*, y el despliegue terminó sin errores (`docs/ci/entrega-3/2.6-version-final.md`,
-   hallazgos 2 y 3). No se volvió a desplegar una versión que no responda, así que no queda probado que
+   contenedor *Healthy*, y el despliegue terminó sin errores: las 726 consultas del monitor
+   respondieron 200 y el balanceador no registró errores 5XX. No se volvió a desplegar una versión que no responda, así que no queda probado que
    el canario deje de pasarle tráfico. Otras salidas son un *listener* de prueba o la reversión por alarmas de
    CloudWatch, que la decisión 3 de la 1.2 dejó para la Entrega 4.
 
