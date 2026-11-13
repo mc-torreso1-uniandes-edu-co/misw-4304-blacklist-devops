@@ -169,7 +169,7 @@ la sección 4 muestra su configuración.
 principal inicia el pipeline y, si el CI pasa, despliega. Es una decisión del equipo del 3 de noviembre: el pipeline
 pierde el disparador de pull requests de la Entrega 2, así que abrir o actualizar un PR no ejecuta
 nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una promoción `dev` →
-`main` que lleva una prueba que falla (decisión del equipo del 3 de noviembre).
+`main` que lleva una prueba que falla (decisión del equipo del 4 de noviembre, que se desprende de la anterior).
 
 **Flujo de una ejecución:**
 
@@ -261,7 +261,7 @@ El clúster, el servicio, el balanceador, los grupos de seguridad, el repositori
 los mismos que usa el pipeline. Lo que cambia en cada despliegue es la revisión de la definición de
 la tarea y el grupo de destino que atiende el tráfico: el despliegue manual de esta sección usó la
 revisión 1 y el grupo azul; las secciones 7 y 8 documentan las revisiones posteriores y el despliegue
-azul/verde, y la 5 es un CI fallido, sin despliegue.
+azul/verde, y la 6 es un CI fallido, sin despliegue.
 
 ### 4.1 Orden de creación y dependencias
 
@@ -607,7 +607,7 @@ ejecución y 1 destino sano en `blacklist-devops-tg-azul`.
    siguientes (validaciones, inicio de sesión en ECR y `docker build`). El pipeline no pasa a
    *Deploy*, así que la acción *Deploy* no registra una revisión nueva, CodeDeploy no crea un
    despliegue y Fargate sigue con la versión anterior. Es el comportamiento que fijó la decisión del
-   equipo del 3 de noviembre.
+   equipo del 4 de noviembre.
 2. **`POST_BUILD` se ejecuta aunque el build ya haya fallado.** CodeBuild corre siempre esa fase; lo
    que impide el envío es la condición `CODEBUILD_BUILD_SUCCEEDING = 1` del `buildspec.yml`, no el
    `set -e`. La fase termina en *Succeeded* sin ejecutar ningún `docker push`. El `set -e` solo hace
