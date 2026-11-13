@@ -244,6 +244,19 @@ def imprimir_pdf(ruta_html, ruta_pdf):
         fallar("El navegador no generó el PDF.")
 
 
+# Referencias a tareas o issues del tablero ("la 1.6", "tareas 1.6 a 1.16", "(2.6, #210)", "(#199)"),
+# que el tutor no puede consultar. No cuenta versiones (3.13.16), secciones ni figuras, que llevan su
+# palabra delante, ni los PR ("PR #253", "promoción #254").
+TAREA_DEL_TABLERO = re.compile(r"(?:\b(?:[Ll]as?|[Tt]areas?)\s+|\()[1-4]\.\d{1,2}(?![.\d])|\(#\d+\)")
+
+
+def referencias_a_tareas(markdown):
+    """Referencias a tareas del tablero fuera de bloques e incisos de código (valores literales)."""
+    texto = re.sub(r"```.*?```", "", markdown, flags=re.S)
+    texto = re.sub(r"`[^`\n]*`", "", texto)
+    return sorted(set(" ".join(m.group(0).split()) for m in TAREA_DEL_TABLERO.finditer(texto)))
+
+
 def verificar(markdown, ruta_pdf):
     problemas = []
     etiquetas = re.findall(r"^\*\*([^*\n]*:)\*\*$", markdown, flags=re.M)
@@ -251,6 +264,9 @@ def verificar(markdown, ruta_pdf):
     print("Marcadores [PENDIENTE] en el documento:", markdown.count("PENDIENTE"))
     if md_refs:
         problemas.append("el documento cita archivos .md: %s" % sorted(set(md_refs)))
+    tareas = referencias_a_tareas(markdown)
+    if tareas:
+        problemas.append("el documento cita tareas del tablero, que el tutor no ve: %s" % tareas)
     pymupdf = cargar_pymupdf()
     if not pymupdf:
         print("(pymupdf no está instalado: se omite la verificación del PDF)")

@@ -118,3 +118,27 @@ def test_si_cambia_no_genera_cuando_la_huella_coincide(docs, monkeypatch, capsys
     ejecutar(monkeypatch, "--entrega", "2", "--si-cambia")
 
     assert "ya está al día" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("Es el diseño aprobado en la 1.3 el 4 de noviembre.", ["la 1.3"]),
+    ("las tareas 1.6 a 1.16 crearon los recursos", ["tareas 1.6"]),
+    ("La 2.5 (#209) la retira.", ["(#209)", "La 2.5"]),
+    ("en la ejecución final (2.6, #210),", ["(2.6"]),
+    ("Es la decisión 4 de la\n1.1: el pipeline", ["la 1.1"]),
+    ("Cuatro roles de IAM (1.6): ejecución", ["(1.6"]),
+])
+def test_detecta_referencias_a_tareas_del_tablero(texto, esperado):
+    assert generar_pdf.referencias_a_tareas(texto) == esperado
+
+
+@pytest.mark.parametrize("texto", [
+    "Python 3.13.16, Flask 3.1.3 y Fargate, versión de plataforma 1.4.0.",
+    "Ver la sección 4.2, las secciones 6.1 y 6.2 y la figura 4.11.",
+    "Se fusiona el PR #253 en `dev` y la promoción #254 en `main`.",
+    'El campo `blocked_reason: "prueba de la tarea 1.11"` quedó en la base.',
+    "```bash\ncurl -d '{\"blocked_reason\":\"prueba de la tarea 1.11\"}'\n```",
+    "El cambio de configuración (8.1) y la decisión del equipo del 3 de noviembre.",
+])
+def test_no_confunde_versiones_secciones_pr_ni_literales_con_tareas(texto):
+    assert generar_pdf.referencias_a_tareas(texto) == []
