@@ -6,7 +6,7 @@ Tarea 4.1 (#221) · Épica E3 · Cierre
 |---|---|
 | Duración | **9:15** (límite del curso: 10:00) |
 | Estructura | 4 partes seguidas, una por integrante, en 3 grabaciones |
-| Grabación | Parte 2 el miércoles 11 de noviembre de 2026 (4.3, #223); partes 1, 3 y 4 el jueves 12 (4.2, #222 y 4.4, #224). Marcelo integra y publica el viernes 13 (4.5, #225) |
+| Grabación | Propuesta del 11 de noviembre de 2026: partes 1 y 2 el jueves 12 desde las 20:00 (4.2, #222 y 4.3, #223); partes 3 y 4 el viernes 13 (4.4, #224). Marcelo integra y publica el sábado 14 (4.5, #225) |
 
 Regla del enunciado (`docs/entrega-3-entrega-continua.md`): el video muestra en vivo la configuración y los
 escenarios de prueba de los endpoints, los repositorios de código y el ambiente en GitHub y AWS para la
@@ -105,10 +105,10 @@ Rúbrica: documento, punto 1, CI fallido (4 %); punto 3, CI exitoso y CD fallido
 
 Antes de grabar:
 
-- 2.6 (#210) ejecutada y documentada, para completar los pendientes. La 2.5 (#209) ya está documentada en
-  `docs/ci/entrega-3/2.5-cd-fallido.md`: el despliegue falló a los 7 min 30 s y la ejecución duró 11 min 59 s.
+- Hacer la última promoción a `main` antes de grabar la parte 1: cada promoción vuelve a desplegar y cambia la
+  versión de `/ping`.
 - Servicio con la versión de la 2.6, una tarea sana en el grupo activo, balanceador activo y RDS disponible.
-- En ECR siguen las imágenes que se muestran (`f224bef`, `db6e990` y la de la 2.5): el ciclo de vida conserva 10.
+- En ECR siguen las imágenes que se muestran (`f224bef`, `db6e990`, `69e12b8` y `d790bcb`): el ciclo de vida conserva 10.
 - Token cargado solo como valor actual en `blacklist-fargate`, con tipo *secret*.
 - Pestañas abiertas en el orden del guion, consola de AWS en `us-east-2`.
 - Ensayo con cronómetro: cada parte dentro de su tiempo; total por debajo de 9:30.
