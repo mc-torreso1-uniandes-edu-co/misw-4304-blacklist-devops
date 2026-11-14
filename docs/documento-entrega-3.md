@@ -438,13 +438,13 @@ la sesión y no se imprimió ni se guardó.
 
 ```bash
 curl -i -X POST $URL/blacklists -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"email":"fargate-1-11@example.com","app_uuid":"3f2c7a52-6b1e-4d7a-9d57-1a5a0f4b2c11","blocked_reason":"prueba de la tarea 1.11"}'
+  -d '{"email":"fargate-1-11@example.com","app_uuid":"3f2c7a52-6b1e-4d7a-9d57-1a5a0f4b2c11","blocked_reason":"prueba manual del despliegue"}'
 
 curl -i $URL/blacklists/fargate-1-11@example.com -H "Authorization: Bearer $TOKEN"
 ```
 
 El `POST` respondió 201 con `{"msg": "Email agregado a la lista negra", "id": 19}` y el `GET` 200 con
-`is_blacklisted: true` y `blocked_reason: "prueba de la tarea 1.11"`. El `POST` dejó la fila `id` 19
+`is_blacklisted: true` y `blocked_reason: "prueba manual del despliegue"`. El `POST` dejó la fila `id` 19
 en `blacklist-db`, la base compartida con las entregas anteriores, así que la validación usó
 PostgreSQL real y no SQLite. El balanceador atiende HTTP sin TLS, así que el token viaja sin cifrar
 entre el cliente y el balanceador; es una limitación conocida y queda anotada.
@@ -1322,7 +1322,8 @@ conclusiones resumen lo que dejó la entrega.
 | `taskdef.json` y `appspec.yaml` viajan en `BuildArtifact` junto con `imageDetail.json` | Leerlos de `SourceArtifact`, como en el ejemplo de AWS | La acción de despliegue acepta artefactos de entrada de hasta 3 MB y el zip del repositorio supera los 43 MB por las capturas; el del build pesa unos 2 KB. El primer intento con `SourceArtifact` falló con un error de configuración antes de crear el despliegue |
 | Azul/verde con canario (10 % durante 5 minutos) desde el 9 de noviembre, sin *listener* de prueba y con 2 minutos antes de terminar la versión anterior | Mantener `CodeDeployDefault.ECSAllAtOnce` o agregar un *listener* de prueba | Con `ECSAllAtOnce` y sin *listener* de prueba, el 100 % del tráfico pasó antes de que el balanceador revisara la salud de la versión nueva. El canario reduce el impacto de una versión defectuosa y el *listener* de prueba suma configuración que la rúbrica no pide |
 | Reversión automática solo ante `DEPLOYMENT_FAILURE`, sin alarmas de CloudWatch ni aprobación manual | Revertir con alarmas de CloudWatch o con una pausa de aprobación | El criterio es la salud del servicio y el despliegue debe ser automático; una pausa rompería el despliegue continuo y las alarmas son de monitoreo, que corresponde a la Entrega 4 |
-| Provocar el CI y el CD fallidos con promociones reales a `main` y revertir por el flujo de ramas | Lanzar ejecuciones manuales, probar solo en ramas sueltas o confiar en la reversión de CodeDeploy | El pipeline solo se dispara con commits en `main`, así que las fallas debían entrar por el flujo real. En el CD fallido, CodeDeploy revirtió Fargate en 2 s, pero el commit defectuoso seguía en `main` y en `latest`: hubo que revertirlo también en el repositorio para que `main` volviera a coincidir con lo que corre |
+| Provocar el CI y el CD fallidos con promociones reales a `main` y revertir por el flujo de ramas | Lanzar ejecuciones manuales, probar solo en ramas sueltas o confiar en la reversión de CodeDeploy | El pipeline solo se dispara con commits en `main`, así que las fallas debían entrar por el flujo real. En el CD fallido, CodeDeploy devolvió el tráfico en 2 s, pero el commit defectuoso seguía en `main` y en `latest`: hubo que revertirlo también en el repositorio para que `main` volviera a coincidir con lo que corre |
+| Provocar el CD fallido cambiando el puerto de Gunicorn a 8001 en el `Dockerfile` | Un secreto inexistente en la definición de la tarea o una función Lambda de validación en los *hooks* de CodeDeploy | Es un cambio de una línea: las pruebas pasan, la verificación de salud de la versión nueva falla y CodeDeploy revierte a la anterior. Es el fallo más simple de explicar en el video y de revertir, y no toca el código ni el contrato del API |
 | Verificación de salud del contenedor (`healthCheck` contra `/ping`) en `taskdef.json` | Confiar solo en la verificación del grupo de destino del balanceador | El balanceador no evalúa un grupo de destino con peso 0: ECS dio la tarea por estable en 9 s y el canario envió el 10 % del tráfico a un contenedor que no respondía durante 5 minutos. Con el `healthCheck`, ECS espera el primer chequeo sano (18 s después del registro) antes de declarar estable el conjunto de sustitución |
 
 ### 9.2 Limitaciones
@@ -1335,8 +1336,9 @@ conclusiones resumen lo que dejó la entrega.
    `healthCheck`.
 2. **Sin reversión por alarmas de CloudWatch ni *listener* de prueba.** CodeDeploy solo revierte ante
    `DEPLOYMENT_FAILURE`. Si una versión arrancara respondiendo `/ping` pero fallara en los endpoints de
-   negocio bajo tráfico real, no habría un corte temprano hasta que fallaran las verificaciones de salud.
-   Las alarmas y los indicadores son de la Entrega 4.
+   negocio bajo tráfico real, no habría un corte temprano: las verificaciones de salud seguirían pasando
+   mientras `/ping` respondiera, y solo una alarma sobre las métricas del balanceador o una prueba de
+   negocio ejecutada fuera del pipeline lo detectaría. Las alarmas y los indicadores son de la Entrega 4.
 3. **HTTP sin TLS en el balanceador.** Igual que en las entregas anteriores, el balanceador escucha en el
    puerto 80 sin certificado ni dominio propio, así que el token viaja sin cifrar entre el cliente y el
    balanceador.
@@ -1351,7 +1353,7 @@ conclusiones resumen lo que dejó la entrega.
    Fargate sobre los créditos de la cuenta, la URL del servicio no permanece activa durante la
    calificación; el historial de ejecuciones, las imágenes y los registros sí quedan disponibles.
 
-### 9.3 Conclusiones
+### 9.3 Conclusiones y lecciones aprendidas
 
 1. **Del commit en `main` a la tarea en Fargate, sin pasos manuales.** El pipeline completa el ciclo que
    en la Entrega 2 terminaba en un paquete en S3: cada promoción ejecuta las pruebas, construye la imagen
@@ -1366,8 +1368,8 @@ conclusiones resumen lo que dejó la entrega.
    que el canario verificaría la salud antes de mover el tráfico; el monitoreo de `/ping` y los eventos de
    ECS mostraron que un grupo de destino sin tráfico no es revisado por el balanceador, y eso llevó a la
    verificación de salud del contenedor en la definición de la tarea.
-4. **La reversión de la infraestructura no reemplaza la reversión en el repositorio.** CodeDeploy restauró
-   el servicio en 2 s, pero `main` y `latest` seguían apuntando al commit defectuoso; solo al revertir el
+4. **La reversión de la infraestructura no reemplaza la reversión en el repositorio.** CodeDeploy devolvió
+   el tráfico en 2 s, pero `main` y `latest` seguían apuntando al commit defectuoso; solo al revertir el
    cambio por el flujo de ramas y completar la ejecución final volvieron a coincidir `main`, `latest` y
    la tarea en ejecución.
 5. **Trazabilidad y secretos, de extremo a extremo.** La etiqueta del commit viaja de GitHub a la imagen,
