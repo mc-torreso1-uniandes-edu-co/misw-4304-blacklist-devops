@@ -210,8 +210,10 @@ nada en AWS. Por eso el CI fallido no sale de un PR sin fusionar, sino de una pr
 
 **Costo y encendido.** Unos 0,06 USD/h con todo encendido (Fargate 0,25 vCPU + 0,5 GB, balanceador y
 direcciones IPv4; cerca de 1,5 USD por día sin la RDS, precios de `us-east-2` consultados el 4 de
-noviembre). El balanceador cobra aunque el servicio esté en cero tareas, así que los recursos solo se
-encienden mientras se trabaja y se graba, como en las entregas anteriores.
+noviembre). El balanceador cobra aunque el servicio esté en cero tareas. En las entregas anteriores los
+recursos solo se encendían mientras se trabajaba y se grababa; en esta, el ambiente queda encendido hasta
+que termine la calificación (capítulo 3), porque el costo, cerca de 1,9 USD por día con la RDS, cabe en
+los créditos de la cuenta.
 
 ## 3. Enlaces de la entrega
 
@@ -232,16 +234,16 @@ Notas aclaratorias:
   environment `blacklist-fargate` del workspace y el video.
 - **Repositorio.** Es privado. Si el tutor necesita acceso, debe suministrar su usuario de GitHub para
   agregarlo como colaborador. El pipeline toma el código de GitHub, sin AWS CodeCommit (sección 2).
-- **Servicio.** Según la aclaración del tutor sobre los recursos de AWS, el ambiente solo está
-  encendido mientras se trabaja y se graba el video, así que la URL puede no responder durante la
-  calificación. La raíz de la URL responde 404 porque el API no define esa ruta; `/ping` responde con la
-  versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
+- **Servicio.** A diferencia de las entregas anteriores, el ambiente queda encendido hasta que termine
+  la calificación, así que la URL responde durante la revisión. La raíz de la URL responde 404 porque el
+  API no define esa ruta; `/ping` responde con la versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
   secciones 6 a 8. En la grabación, el servicio estaba en la revisión 6 de
   `blacklist-devops-task` (imagen `d790bcb`, la versión final del 12 de noviembre), con una tarea sana
   en `blacklist-devops-tg-verde` —el *listener* HTTP:80 le envía el 100 % del tráfico— y `/ping`
-  respondiendo `{"version": "d790bcb"}`. Al cerrar la entrega el servicio se baja a cero tareas, se
-  elimina el balanceador y se detiene la RDS, como en las entregas anteriores; el historial de
-  ejecuciones, las imágenes y los registros siguen disponibles en AWS.
+  respondiendo `{"version": "d790bcb"}`. La promoción a `main` de este documento vuelve a desplegar la
+  misma aplicación con la etiqueta de su commit, así que desde entonces `/ping` responde esa versión.
+  Después de la calificación el servicio se baja a cero tareas, se elimina el balanceador y se detiene la
+  RDS; el historial de ejecuciones, las imágenes y los registros siguen disponibles en AWS.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 - **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
@@ -1349,9 +1351,10 @@ conclusiones resumen lo que dejó la entrega.
 5. **Cada build compila Python 3.13.16.** Como la imagen administrada cambió su parche de Python 3.13,
    `pyenv` compila el intérprete en unos 3 minutos por ejecución, cerca de tres cuartas partes del tiempo
    del build. Una caché del intérprete o una imagen base propia lo reducirían.
-6. **El ambiente se apaga después de grabar el video.** Por el costo por hora del balanceador y de
-   Fargate sobre los créditos de la cuenta, la URL del servicio no permanece activa durante la
-   calificación; el historial de ejecuciones, las imágenes y los registros sí quedan disponibles.
+6. **El ambiente encendido cuesta por hora.** Para que la URL responda durante la calificación, el
+   servicio, el balanceador y la RDS quedan encendidos hasta que termine, cerca de 1,9 USD por día sobre
+   los créditos de la cuenta. Después se apagan los recursos que cobran por hora y se conservan las
+   imágenes, la definición de la tarea, CodeDeploy y el pipeline para volver a levantar el ambiente.
 
 ### 9.3 Conclusiones y lecciones aprendidas
 
