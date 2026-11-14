@@ -441,20 +441,20 @@ la sesión y no se imprimió ni se guardó.
 
 ```bash
 curl -i -X POST $URL/blacklists -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"email":"fargate-1-11@example.com","app_uuid":"3f2c7a52-6b1e-4d7a-9d57-1a5a0f4b2c11","blocked_reason":"prueba manual del despliegue"}'
+  -d '{"email":"fargate-1-11@example.com","app_uuid":"3f2c7a52-6b1e-4d7a-9d57-1a5a0f4b2c11","blocked_reason":"<motivo de la prueba>"}'
 
 curl -i $URL/blacklists/fargate-1-11@example.com -H "Authorization: Bearer $TOKEN"
 ```
 
 El `POST` respondió 201 con `{"msg": "Email agregado a la lista negra", "id": 19}` y el `GET` 200 con
-`is_blacklisted: true` y `blocked_reason: "prueba manual del despliegue"`. El `POST` dejó la fila `id` 19
+`is_blacklisted: true` y el `blocked_reason` con el que se hizo la prueba. El `POST` dejó la fila `id` 19
 en `blacklist-db`, la base compartida con las entregas anteriores, así que la validación usó
 PostgreSQL real y no SQLite. El balanceador atiende HTTP sin TLS, así que el token viaja sin cifrar
 entre el cliente y el balanceador; es una limitación conocida y queda anotada.
 
 ![Figura 4.10. GET /ping contra el balanceador: 200 con la versión f224bef](capturas/entrega-3/1.11-api-ping.png)
 
-![Figura 4.11. POST /blacklists y GET /blacklists/<email> contra el balanceador: 201 y 200, sin mostrar el token](capturas/entrega-3/1.11-api-post-get.png)
+![Figura 4.11. POST /blacklists y GET /blacklists/<email> contra el balanceador: 201 y 200, sin mostrar el token; el `blocked_reason` es el texto de prueba de esa ejecución](capturas/entrega-3/1.11-api-post-get.png)
 
 **Estado al cierre de esta sección.** Después de la validación manual, el pipeline desplegó la
 revisión 3 de `blacklist-devops-task` con la imagen `168dd91` y movió el *listener* de producción al
@@ -490,7 +490,8 @@ el despliegue manual respondió `f224bef`.
 Con el servicio encendido, la tarea y el balanceador cuestan unos 0,05 USD/h; el diseño redondea a
 0,06 USD/h y estima cerca de 1,5 USD por día sin la RDS. Para dejar de pagar la tarea se baja el
 servicio a cero con `aws ecs update-service ... --desired-count 0`; el balanceador sigue cobrando
-aunque no haya tareas, así que los recursos solo se encienden mientras se trabaja y se graba.
+aunque no haya tareas. En las entregas anteriores los recursos solo se encendían mientras se
+trabajaba y se grababa; en esta quedan encendidos hasta terminar la calificación (sección 2).
 
 El despliegue manual es la base que el pipeline reproduce: la misma familia de definición y el mismo
 servicio, con la diferencia de que la acción *Deploy* registra una revisión nueva con la imagen del
@@ -1113,7 +1114,7 @@ sección 6. El detalle completo, con los dos CSV del monitor de `/ping`, está e
 La ejecución **no salió como se había previsto**. CodeDeploy falló y revirtió solo, como se buscaba,
 pero la configuración canaria no verificó la salud de la versión nueva antes de pasarle tráfico: el
 10 % de las solicitudes recibió errores 502 durante cinco minutos y, al pasar el resto, hubo unos 44 s
-sin servicio hasta la reversión. Los hallazgos 2 a 9 explican por qué y qué se corrigió.
+sin servicio con el tráfico completo. Los hallazgos 2 a 9 explican por qué y qué se corrigió.
 
 ### 8.1 Configuración de CodeDeploy antes de la ejecución
 
@@ -1316,7 +1317,7 @@ conclusiones resumen lo que dejó la entrega.
 
 | Decisión | Alternativa descartada | Motivo |
 |---|---|---|
-| Mantener el repositorio en GitHub, conectado a CodePipeline con AWS CodeConnections | Replicar el código en AWS CodeCommit o usar tokens personales | CodeCommit no está disponible en el plan gratuito sin activar características avanzadas, y el profesor y los tutores respondieron el 3 de noviembre que la entrega se hace en GitHub. La conexión autoriza solo este repositorio y no guarda credenciales |
+| Mantener el repositorio en GitHub, conectado a CodePipeline con AWS CodeConnections | Replicar el código en AWS CodeCommit o usar tokens personales | CodeCommit no está disponible en el plan gratuito sin activar características avanzadas, y el curso confirmó que la entrega se hace en GitHub: el profesor respondió el 31 de octubre y el tutor remitió a su mensaje el 3 de noviembre. La conexión autoriza solo este repositorio y no guarda credenciales |
 | Un solo pipeline disparado por el *push* a `main`, sin filtro de rutas y sin disparador de *pull request* | Conservar el disparador de pull request de la Entrega 2 o excluir rutas de documentación | El pipeline construye la imagen, la publica en ECR y despliega: un pull request hacia `dev` habría movido `latest` y habría llevado a Fargate código sin promocionar. Con el disparo solo en `main`, todo lo que se despliega salió de la rama estable |
 | Imágenes en ECR privado con dos etiquetas (los siete primeros caracteres del commit y `latest`) y una política de ciclo de vida de 10 imágenes | Registro público, una sola etiqueta o una numeración propia | La etiqueta del commit identifica el commit que produjo la imagen y, con el historial del pipeline, el build; `latest` identifica la última construcción y la política de 10 imágenes acota el almacenamiento del plan gratuito |
 | `DATABASE_URL` y `JWT_SECRET_KEY` como `SecureString` de Parameter Store, referenciados en `secrets` | Valores en texto plano en la definición de la tarea o en la imagen, o Secrets Manager | Parameter Store estándar no cobra por parámetro y permite versionar `taskdef.json` con los ARN, nunca con los valores; Secrets Manager cobra por secreto y por consulta |
