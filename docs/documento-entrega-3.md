@@ -223,8 +223,8 @@ los créditos de la cuenta.
 | URL del servicio (balanceador de AWS Fargate) | http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación (SharePoint de la Universidad) | [PENDIENTE: enlace del video publicado.] |
-| Video de sustentación (YouTube) | [PENDIENTE: enlace del video publicado.] |
+| Video de sustentación (SharePoint de la Universidad) | https://uniandes.sharepoint.com/:v:/s/ProyectoDevOps-MISO/IQBgiTbwGjz4Rbtki6oSt2zKAe0sDg7Sd0nNXZNsRcK9cM0?e=LGsIi4 |
+| Video de sustentación (YouTube) | https://youtu.be/QPKoWsCssqo |
 
 Notas aclaratorias:
 
@@ -236,12 +236,13 @@ Notas aclaratorias:
   agregarlo como colaborador. El pipeline toma el código de GitHub, sin AWS CodeCommit (sección 2).
 - **Servicio.** A diferencia de las entregas anteriores, el ambiente queda encendido hasta que termine
   la calificación, así que la URL responde durante la revisión. La raíz de la URL responde 404 porque el
-  API no define esa ruta; `/ping` responde con la versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
-  secciones 6 a 8. En la grabación, el servicio estaba en la revisión 6 de
-  `blacklist-devops-task` (imagen `d790bcb`, la versión final del 12 de noviembre), con una tarea sana
-  en `blacklist-devops-tg-verde` —el *listener* HTTP:80 le envía el 100 % del tráfico— y `/ping`
-  respondiendo `{"version": "d790bcb"}`. La promoción a `main` de este documento vuelve a desplegar la
-  misma aplicación con la etiqueta de su commit, así que desde entonces `/ping` responde esa versión.
+  API no define esa ruta; `/ping` responde con la versión desplegada, sin token. El funcionamiento del
+  pipeline y del API se ve en el video y en las secciones 6 a 8. En la grabación, el servicio estaba en
+  la revisión 6 de `blacklist-devops-task` (imagen `d790bcb`, la versión final del 12 de noviembre), con
+  una tarea sana en `blacklist-devops-tg-verde` —el *listener* HTTP:80 le envía el 100 % del tráfico— y
+  `/ping` respondiendo `{"version": "d790bcb"}`. La promoción a `main` de este documento vuelve a
+  desplegar la misma aplicación con la etiqueta de su commit, así que desde entonces `/ping` responde
+  esa versión.
   Después de la calificación el servicio se baja a cero tareas, se elimina el balanceador y se detiene la
   RDS; el historial de ejecuciones, las imágenes y los registros siguen disponibles en AWS.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
