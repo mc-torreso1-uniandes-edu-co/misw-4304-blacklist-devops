@@ -221,8 +221,8 @@ encienden mientras se trabaja y se graba, como en las entregas anteriores.
 | URL del servicio (balanceador de AWS Fargate) | http://blacklist-devops-alb-663902063.us-east-2.elb.amazonaws.com |
 | Workspace de Postman | https://www.postman.com/misw-4304-202615-devops/blacklist-devops/overview |
 | Documentación publicada del API | https://documenter.getpostman.com/view/58851546/2sBYHRVMSR |
-| Video de sustentación (SharePoint de la Universidad) | [PENDIENTE: enlace del video publicado.] |
-| Video de sustentación (YouTube) | [PENDIENTE: enlace del video publicado.] |
+| Video de sustentación (SharePoint de la Universidad) | https://uniandes.sharepoint.com/:v:/s/ProyectoDevOps-MISO/IQBgiTbwGjz4Rbtki6oSt2zKAe0sDg7Sd0nNXZNsRcK9cM0?e=LGsIi4 |
+| Video de sustentación (YouTube) | https://youtu.be/QPKoWsCssqo |
 
 Notas aclaratorias:
 
