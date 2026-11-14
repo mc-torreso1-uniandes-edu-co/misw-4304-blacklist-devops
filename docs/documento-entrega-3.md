@@ -1065,7 +1065,7 @@ documentan en la sección 8.
    a las 18:05:27 y ninguna consulta a `/ping` falló porque la versión nueva estaba bien. El conjunto
    anterior siguió dos minutos más en el grupo verde antes de terminarse. Por esta limitación, desde
    la prueba del CD fallido (sección 8) el grupo de despliegue usa
-   `CodeDeployDefault.ECSCanary10Percent5Minutes` (votación del equipo del 10 de noviembre). Esa
+   `CodeDeployDefault.ECSCanary10Percent5Minutes` (votación del equipo del 9 de noviembre). Esa
    prueba mostró que el canario tampoco verifica la salud antes del primer 10 % del tráfico; la
    corrección es la verificación de salud del contenedor de la versión final (sección 8, hallazgo 9).
 5. **Los grupos de destino se alternan.** El despliegue de la ejecución manual del 8 de noviembre dejó el tráfico en el grupo verde;

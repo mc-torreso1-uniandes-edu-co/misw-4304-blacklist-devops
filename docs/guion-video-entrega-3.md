@@ -25,7 +25,7 @@ parte 1, 4.3 (#223) la parte 2 y 4.4 (#224) las partes 3 y 4. Las ejecuciones se
 cada servicio; no se esperan en vivo. Los datos de la 2.5 (#209) y la 2.6 (#210) están en
 `docs/ci/entrega-3/2.5-cd-fallido.md` y `docs/ci/entrega-3/2.6-version-final.md`.
 
-Decisión del equipo del 10 de noviembre de 2026: el grupo de despliegue usa `CodeDeployDefault.ECSCanary10Percent5Minutes`
+Decisión del equipo del 9 de noviembre de 2026: el grupo de despliegue usa `CodeDeployDefault.ECSCanary10Percent5Minutes`
 de forma permanente, en lugar de `ECSAllAtOnce`. La 2.3 se ejecutó con `ECSAllAtOnce`; la 2.5 y la 2.6 corren con el
 canario. La 2.5 mostró que el canario tampoco revisa la salud de la versión nueva antes del primer 10 % del tráfico
 (`docs/ci/entrega-3/2.5-cd-fallido.md`); por eso la 2.6 agrega una verificación de salud del contenedor en
