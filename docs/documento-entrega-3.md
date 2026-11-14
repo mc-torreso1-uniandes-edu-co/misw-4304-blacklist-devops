@@ -236,8 +236,12 @@ Notas aclaratorias:
   encendido mientras se trabaja y se graba el video, así que la URL puede no responder durante la
   calificación. La raíz de la URL responde 404 porque el API no define esa ruta; `/ping` responde con la
   versión desplegada, sin token. El funcionamiento del pipeline y del API se ve en el video y en las
-  secciones 6 a 8.
-  [PENDIENTE: estado final del balanceador y del servicio después de la grabación.]
+  secciones 6 a 8. En la grabación, el servicio estaba en la revisión 6 de
+  `blacklist-devops-task` (imagen `d790bcb`, la versión final del 12 de noviembre), con una tarea sana
+  en `blacklist-devops-tg-verde` —el *listener* HTTP:80 le envía el 100 % del tráfico— y `/ping`
+  respondiendo `{"version": "d790bcb"}`. Al cerrar la entrega el servicio se baja a cero tareas, se
+  elimina el balanceador y se detiene la RDS, como en las entregas anteriores; el historial de
+  ejecuciones, las imágenes y los registros siguen disponibles en AWS.
 - **Postman.** El workspace y la documentación publicada son públicos y se abren sin cuenta. Para
   ejecutar las solicitudes hace falta el token, que no se publica en ningún lugar.
 - **Video.** Es el mismo video en dos lugares. El primer enlace está en la carpeta del equipo en
@@ -1300,4 +1304,76 @@ minutos y unos 44 s sin servicio, y la corrección se aplicó en la versión fin
 
 ## 9. Decisiones y conclusiones
 
-[PENDIENTE: decisiones y conclusiones.]
+Las decisiones de diseño se tomaron antes de crear los recursos, el 3 y el 4 de noviembre; una se
+reemplazó y otra se agregó a partir de lo que mostraron las ejecuciones: el paso del tráfico y la
+verificación de salud del contenedor. Las limitaciones son las que siguen vigentes al cierre y las
+conclusiones resumen lo que dejó la entrega.
+
+### 9.1 Decisiones
+
+| Decisión | Alternativa descartada | Motivo |
+|---|---|---|
+| Mantener el repositorio en GitHub, conectado a CodePipeline con AWS CodeConnections | Replicar el código en AWS CodeCommit o usar tokens personales | CodeCommit no está disponible en el plan gratuito sin activar características avanzadas, y el profesor y los tutores respondieron el 3 de noviembre que la entrega se hace en GitHub. La conexión autoriza solo este repositorio y no guarda credenciales |
+| Un solo pipeline disparado por el *push* a `main`, sin filtro de rutas y sin disparador de *pull request* | Conservar el disparador de pull request de la Entrega 2 o excluir rutas de documentación | El pipeline construye la imagen, la publica en ECR y despliega: un pull request hacia `dev` habría movido `latest` y habría llevado a Fargate código sin promocionar. Con el disparo solo en `main`, todo lo que se despliega salió de la rama estable |
+| Imágenes en ECR privado con dos etiquetas (los siete primeros caracteres del commit y `latest`) y una política de ciclo de vida de 10 imágenes | Registro público, una sola etiqueta o una numeración propia | La etiqueta del commit identifica el commit que produjo la imagen y, con el historial del pipeline, el build; `latest` identifica la última construcción y la política de 10 imágenes acota el almacenamiento del plan gratuito |
+| `DATABASE_URL` y `JWT_SECRET_KEY` como `SecureString` de Parameter Store, referenciados en `secrets` | Valores en texto plano en la definición de la tarea o en la imagen, o Secrets Manager | Parameter Store estándar no cobra por parámetro y permite versionar `taskdef.json` con los ARN, nunca con los valores; Secrets Manager cobra por secreto y por consulta |
+| Tareas de Fargate en subredes públicas con IP pública y el grupo de seguridad restringido al balanceador | Subredes privadas con NAT gateway o *endpoints* de VPC | Las tareas necesitan salir a ECR, Parameter Store y CloudWatch Logs, pero el NAT gateway y los *endpoints* de interfaz cobran por hora; el grupo de seguridad de las tareas solo acepta el 8000 desde el balanceador |
+| No volver a desplegar en Elastic Beanstalk; el build deja de generar el paquete `.zip` | Mantener los dos ambientes o seguir desplegando el `.zip` a Beanstalk | La entrega pide Fargate y dos ambientes encendidos no caben en el plan gratuito. Se conservan la aplicación, la plantilla y las versiones de Beanstalk para sustentar las entregas anteriores |
+| `taskdef.json` y `appspec.yaml` viajan en `BuildArtifact` junto con `imageDetail.json` | Leerlos de `SourceArtifact`, como en el ejemplo de AWS | La acción de despliegue acepta artefactos de entrada de hasta 3 MB y el zip del repositorio supera los 43 MB por las capturas; el del build pesa unos 2 KB. El primer intento con `SourceArtifact` falló con un error de configuración antes de crear el despliegue |
+| Azul/verde con canario (10 % durante 5 minutos) desde el 9 de noviembre, sin *listener* de prueba y con 2 minutos antes de terminar la versión anterior | Mantener `CodeDeployDefault.ECSAllAtOnce` o agregar un *listener* de prueba | Con `ECSAllAtOnce` y sin *listener* de prueba, el 100 % del tráfico pasó antes de que el balanceador revisara la salud de la versión nueva. El canario reduce el impacto de una versión defectuosa y el *listener* de prueba suma configuración que la rúbrica no pide |
+| Reversión automática solo ante `DEPLOYMENT_FAILURE`, sin alarmas de CloudWatch ni aprobación manual | Revertir con alarmas de CloudWatch o con una pausa de aprobación | El criterio es la salud del servicio y el despliegue debe ser automático; una pausa rompería el despliegue continuo y las alarmas son de monitoreo, que corresponde a la Entrega 4 |
+| Provocar el CI y el CD fallidos con promociones reales a `main` y revertir por el flujo de ramas | Lanzar ejecuciones manuales, probar solo en ramas sueltas o confiar en la reversión de CodeDeploy | El pipeline solo se dispara con commits en `main`, así que las fallas debían entrar por el flujo real. En el CD fallido, CodeDeploy revirtió Fargate en 2 s, pero el commit defectuoso seguía en `main` y en `latest`: hubo que revertirlo también en el repositorio para que `main` volviera a coincidir con lo que corre |
+| Verificación de salud del contenedor (`healthCheck` contra `/ping`) en `taskdef.json` | Confiar solo en la verificación del grupo de destino del balanceador | El balanceador no evalúa un grupo de destino con peso 0: ECS dio la tarea por estable en 9 s y el canario envió el 10 % del tráfico a un contenedor que no respondía durante 5 minutos. Con el `healthCheck`, ECS espera el primer chequeo sano (18 s después del registro) antes de declarar estable el conjunto de sustitución |
+
+### 9.2 Limitaciones
+
+1. **No se volvió a desplegar una versión defectuosa después de agregar la verificación de salud del
+   contenedor.** La versión final comprobó que, con una tarea sana, ECS espera el primer chequeo antes de
+   darla por estable y el canario transcurre sin errores, pero no se provocó un segundo fallo para medir
+   en qué momento se detiene `Install` cuando el contenedor nunca llega a sano ni cómo se combina el
+   periodo de gracia de 60 s del servicio con el arranque de 20 s y los tres intentos de 15 s del
+   `healthCheck`.
+2. **Sin reversión por alarmas de CloudWatch ni *listener* de prueba.** CodeDeploy solo revierte ante
+   `DEPLOYMENT_FAILURE`. Si una versión arrancara respondiendo `/ping` pero fallara en los endpoints de
+   negocio bajo tráfico real, no habría un corte temprano hasta que fallaran las verificaciones de salud.
+   Las alarmas y los indicadores son de la Entrega 4.
+3. **HTTP sin TLS en el balanceador.** Igual que en las entregas anteriores, el balanceador escucha en el
+   puerto 80 sin certificado ni dominio propio, así que el token viaja sin cifrar entre el cliente y el
+   balanceador.
+4. **Las pruebas del build usan SQLite en memoria y la colección de Postman corre fuera del pipeline.**
+   Así el build no necesita red hacia la RDS ni secretos, pero las pruebas contra PostgreSQL real y contra
+   el balanceador se ejecutan como validación posterior al despliegue; las 22 pruebas de la colección
+   no bloquean una promoción.
+5. **Cada build compila Python 3.13.16.** Como la imagen administrada cambió su parche de Python 3.13,
+   `pyenv` compila el intérprete en unos 3 minutos por ejecución, cerca de tres cuartas partes del tiempo
+   del build. Una caché del intérprete o una imagen base propia lo reducirían.
+6. **El ambiente se apaga después de grabar el video.** Por el costo por hora del balanceador y de
+   Fargate sobre los créditos de la cuenta, la URL del servicio no permanece activa durante la
+   calificación; el historial de ejecuciones, las imágenes y los registros sí quedan disponibles.
+
+### 9.3 Conclusiones
+
+1. **Del commit en `main` a la tarea en Fargate, sin pasos manuales.** El pipeline completa el ciclo que
+   en la Entrega 2 terminaba en un paquete en S3: cada promoción ejecuta las pruebas, construye la imagen
+   con la etiqueta del commit, la publica en ECR, registra una revisión de la tarea y la despliega con
+   CodeDeploy.
+2. **Las tres ejecuciones exigidas probaron los mecanismos de protección en cada etapa.** En el CI
+   fallido, una prueba rota detuvo la construcción en 3 min 42 s sin generar imagen ni invocar el
+   despliegue; en el CI y CD exitosos, la versión nueva quedó atendiendo sin fallas; y en el CD fallido,
+   CodeDeploy detectó el conjunto de sustitución en mal estado y devolvió el tráfico a la versión anterior
+   en 2 s, aunque hubo 44 s sin servicio con el tráfico completo.
+3. **Las suposiciones sobre el despliegue azul/verde hubo que contrastarlas con mediciones.** Se suponía
+   que el canario verificaría la salud antes de mover el tráfico; el monitoreo de `/ping` y los eventos de
+   ECS mostraron que un grupo de destino sin tráfico no es revisado por el balanceador, y eso llevó a la
+   verificación de salud del contenedor en la definición de la tarea.
+4. **La reversión de la infraestructura no reemplaza la reversión en el repositorio.** CodeDeploy restauró
+   el servicio en 2 s, pero `main` y `latest` seguían apuntando al commit defectuoso; solo al revertir el
+   cambio por el flujo de ramas y completar la ejecución final volvieron a coincidir `main`, `latest` y
+   la tarea en ejecución.
+5. **Trazabilidad y secretos, de extremo a extremo.** La etiqueta del commit viaja de GitHub a la imagen,
+   a la revisión de la tarea y a la respuesta de `/ping`, mientras los secretos permanecen cifrados en
+   Parameter Store y los archivos de configuración no contienen valores.
+6. **La base para el monitoreo continuo queda lista.** Con los registros del contenedor y de los builds en
+   CloudWatch Logs, las métricas del balanceador y del servicio, y el despliegue canario activo, el
+   siguiente paso es agregar pruebas de desempeño, tableros y alarmas que permitan revertir antes de que
+   el usuario lo note.
